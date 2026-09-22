@@ -1,7 +1,7 @@
 // Links store: CRUD, state filters, tags/sites facets, digest and search
 // (FTS5 when available, LIKE fallback otherwise — see db.js ftsEnabled()).
 import { z } from "zod";
-import { db, uid, now, transaction, ftsEnabled } from "./db.js";
+import { db, uid, now, transaction, ftsEnabled, isOpen } from "./db.js";
 import { normalizeUrl, siteOf } from "./url.js";
 
 export const KINDS = ["article", "video", "pdf", "image", "other"];
@@ -63,8 +63,11 @@ export function createLink(input) {
   return { link, existing: false };
 }
 
-/** Write the outcome of a background fetch (see fetcher.js). Silently no-ops if the link was deleted meanwhile. */
+/** Write the outcome of a background fetch (see fetcher.js). Silently no-ops
+ * if the link was deleted meanwhile, or if the app is shutting down and the
+ * database has already been closed (a fetch can still be in flight then). */
 export function applyFetchResult(id, patch) {
+  if (!isOpen()) return null;
   const current = getLink(id);
   if (!current) return null;
   const next = { ...current, ...patch, fetched_at: now() };

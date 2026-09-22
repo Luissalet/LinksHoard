@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { init as initDb } from "./db.js";
 import { installRoutes } from "./routes.js";
 import { installAgentRoutes, writeToken } from "./agent-routes.js";
+import { createGuard } from "./guard.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -19,25 +20,13 @@ export function resolveDataDir(env = process.env) {
   return env.LINKS_DATA_DIR || path.join(ROOT, "data");
 }
 
-function localOnly(req, res, next) {
-  const host = (req.headers.host || "").split(":")[0];
-  if (!["localhost", "127.0.0.1"].includes(host)) return res.status(403).json({ error: "Solo se permite acceso local." });
-  const origin = req.headers.origin;
-  if (origin) {
-    const allowed = [`http://${req.headers.host}`, "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"];
-    if (!allowed.includes(origin)) return res.status(403).json({ error: "Origen no permitido." });
-  }
-  if (req.headers["sec-fetch-site"] === "cross-site") return res.status(403).json({ error: "Petición desde otra web no permitida." });
-  next();
-}
-
-export function createApp({ dataDir, dataDirConfigured = false, serveStatic = true } = {}) {
+export function createApp({ dataDir, dataDirConfigured = false, serveStatic = true, allowedHosts = process.env.LINKS_ALLOWED_HOSTS } = {}) {
   initDb(dataDir);
   const token = writeToken(dataDir);
 
   const app = express();
   app.disable("x-powered-by");
-  app.use(localOnly);
+  app.use(createGuard(allowedHosts));
   app.use(express.json({ limit: "10mb" }));
   installRoutes(app, { version, dataDirConfigured });
   installAgentRoutes(app, { token });

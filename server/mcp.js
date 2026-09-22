@@ -1,5 +1,6 @@
 // MCP stdio bridge. It never opens the database: every call is proxied to the
 // running app (POST /api/agent/call) with the token from <DATA_DIR>/mcp-token.
+import "./no-sqlite-warning.js"; // must load before anything that imports node:sqlite (agent-tools.js -> links.js -> db.js)
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

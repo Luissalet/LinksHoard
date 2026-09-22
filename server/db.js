@@ -90,6 +90,13 @@ export function db() {
   return connection;
 }
 
+/** True once init(dataDir) has run and close() has not. Background jobs (the
+ * fetch queue) check this before writing, since a job can still be in flight
+ * when the app is shutting down. */
+export function isOpen() {
+  return connection !== null;
+}
+
 export function dataDir() {
   return dataDirectory;
 }

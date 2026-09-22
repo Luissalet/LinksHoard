@@ -4,14 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import { createApp } from "../server/app.js";
 import { close } from "../server/db.js";
+import { drain } from "../server/fetcher.js";
 
 export function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-"));
 }
 
-export async function bootServer() {
+export async function bootServer(options = {}) {
   const dataDir = tempDir();
-  const { app, token } = createApp({ dataDir, dataDirConfigured: true, serveStatic: false });
+  const { app, token } = createApp({ dataDir, dataDirConfigured: true, serveStatic: false, ...options });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });
@@ -28,6 +29,10 @@ export async function bootServer() {
   };
   const agent = (name, args) => call("POST", "/api/agent/call", { name, arguments: args }, { Authorization: `Bearer ${token}` });
   const stop = async () => {
+    // Let any still-queued/in-flight background fetch finish and write its
+    // result before the database goes away, or it would throw "Database not
+    // initialised" from an unawaited async task after the test has ended.
+    await drain();
     await new Promise((resolve) => server.close(resolve));
     close();
     fs.rmSync(dataDir, { recursive: true, force: true });

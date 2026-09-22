@@ -11,7 +11,9 @@ const CONCURRENCY = 2;
 const queue = [];
 const waiters = new Map(); // linkId -> [{resolve}]
 const runningIds = new Set();
+let drainWaiters = [];
 let active = 0;
+let stopped = false;
 
 /** Read a response body up to maxBytes, aborting the stream past the limit. */
 async function readLimited(response, maxBytes) {
@@ -93,7 +95,7 @@ async function runOne(linkId, url) {
 }
 
 function pump() {
-  while (active < CONCURRENCY && queue.length) {
+  while (!stopped && active < CONCURRENCY && queue.length) {
     const job = queue.shift();
     active++;
     runningIds.add(job.linkId);
@@ -103,10 +105,16 @@ function pump() {
       pump();
     });
   }
+  if (active === 0 && (queue.length === 0 || stopped)) {
+    const resolved = drainWaiters;
+    drainWaiters = [];
+    for (const resolve of resolved) resolve();
+  }
 }
 
-/** Enqueue a fetch for linkId/url; runs in the background. */
+/** Enqueue a fetch for linkId/url; runs in the background. No-op once stop() has been called (shutting down). */
 export function enqueueFetch(linkId, url) {
+  if (stopped) return;
   queue.push({ linkId, url });
   pump();
 }
@@ -125,4 +133,30 @@ export function waitForFetch(linkId, timeoutMs = 10_000) {
 
 export function queueDepth() {
   return { queued: queue.length, active };
+}
+
+/**
+ * Wait for every queued and in-flight fetch to settle (resolves immediately
+ * if the queue is already idle). Awaited by tests before closing the
+ * database, and by the app on shutdown — see stop() below.
+ */
+export function drain(timeoutMs = 15_000) {
+  if (active === 0 && queue.length === 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    drainWaiters.push(finish);
+    if (timeoutMs) setTimeout(finish, timeoutMs).unref?.();
+  });
+}
+
+/**
+ * Stop accepting new fetches and wait for in-flight ones to settle. Call
+ * this before closing the database (server/index.js on SIGINT/SIGTERM, and
+ * tests/helpers.js before db.close()) so a background write never lands
+ * after the connection it needs is gone.
+ */
+export function stop(timeoutMs = 15_000) {
+  stopped = true;
+  return drain(timeoutMs);
 }

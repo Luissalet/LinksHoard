@@ -81,3 +81,48 @@ export const FIXTURE_ARTICLE = `<!doctype html>
   <footer>Copyright fixture footer text that should not appear in extracted content.</footer>
 </body>
 </html>`;
+
+// Mimics the real-world Wikipedia page reported as producing a wrong excerpt
+// (the infobox instead of the lead paragraph) and glued-together text
+// (table cells and adjacent blocks concatenated without spaces): an infobox
+// table before the lead paragraph, reference superscripts inline in the
+// prose, an edit-section span, a table of contents, a genuine in-article
+// table that must stay readable, and a navbox at the end.
+export const FIXTURE_WIKI = `<!doctype html>
+<html lang="es">
+<head><title>Jorge Luis Borges - Wikipedia</title>
+<meta name="description" content="Escritor argentino."></head>
+<body>
+<nav id="mw-panel" role="navigation"><ul><li><a href="/">Portada</a></li></ul></nav>
+<div id="content"><div id="bodyContent"><div id="mw-content-text">
+<table class="infobox biography vcard">
+<tbody>
+<tr><th colspan="2">Jorge Luis Borges</th></tr>
+<tr><td colspan="2">Retrato de Borges en 1951</td></tr>
+<tr><th>Información personal</th></tr>
+<tr><th>Nombre de nacimiento</th><td>Jorge Francisco Isidoro Luis Borges Acevedo</td></tr>
+<tr><th>Nacimiento</th><td>24 de agosto de 1899<br>Buenos Aires, Argentina</td></tr>
+<tr><th>Fallecimiento</th><td>14 de junio de 1986 (86 años)<br>Ginebra, Suiza</td></tr>
+<tr><th>Causa de muerte</th><td>Cáncer de hígado</td></tr>
+<tr><th>Sepultura</th><td>Cementerio de los Reyes</td></tr>
+<tr><th>Nacionalidad</th><td>argentina</td></tr>
+<tr><th>Religión</th><td>Agnosticismo</td></tr>
+</tbody>
+</table>
+<div class="sidebar">Enlaces relacionados de la barra lateral.</div>
+<p><b>Jorge Luis Borges</b><sup class="reference">[1]</sup> (Buenos Aires, 24 de agosto de 1899-Ginebra, 14 de junio de 1986) fue un escritor, poeta, ensayista y traductor argentino, considerado una de las figuras más destacadas de la literatura del siglo XX y una de las principales de la lengua española.<sup class="reference">[2]</sup></p>
+<p>Nacido en el seno de una familia de clase media acomodada, Borges se crio en el barrio porteño de Palermo, un lugar que se convirtió en tema de algunas de sus obras posteriores.<sup class="reference">[3]</sup></p>
+<div class="toc" id="toc"><div class="toctitle">Contenido</div><ul><li>1 Biografía</li><li>2 Obra</li></ul></div>
+<h2>Obra literaria<span class="mw-editsection">[<a href="#">editar</a>]</span></h2>
+<p>Entre sus obras más conocidas se encuentran Ficciones y El Aleph, colecciones de relatos que exploran temas como el infinito, los laberintos y los espejos.</p>
+<table class="wikitable">
+<tbody>
+<tr><th>Obra</th><th>Año</th></tr>
+<tr><td>Ficciones</td><td>1944</td></tr>
+<tr><td>El Aleph</td><td>1949</td></tr>
+</tbody>
+</table>
+</div></div></div>
+<div class="navbox" role="navigation"><div class="navbox-title">Plantilla Jorge Luis Borges</div><ul><li><a href="#">El libro de arena</a></li><li><a href="#">Obras completas Emecé Editores</a></li></ul></div>
+</body>
+</html>`;

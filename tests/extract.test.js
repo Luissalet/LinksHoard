@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { extractHtml, kindFromResponse, excerptOf, wordCount } from "../server/extract.js";
-import { FIXTURE_ARTICLE } from "./helpers.js";
+import { FIXTURE_ARTICLE, FIXTURE_WIKI } from "./helpers.js";
 
 test("extractHtml pulls the article title/byline/text via Readability, skipping nav/footer chrome", () => {
   const out = extractHtml(FIXTURE_ARTICLE, "https://fixture.test/article");
@@ -19,6 +19,42 @@ test("extractHtml falls back to title + meta description + stripped body for thi
   assert.match(out.contentText, /Too short/);
 });
 
+test("extractHtml on a Wikipedia-like page: infobox/navbox/references/toc stripped, tables stay readable", () => {
+  const out = extractHtml(FIXTURE_WIKI, "https://es.wikipedia.org/wiki/Jorge_Luis_Borges");
+
+  // Boilerplate that used to leak into the extracted text is gone.
+  assert.doesNotMatch(out.contentText, /Información personal/);
+  assert.doesNotMatch(out.contentText, /Nombre de nacimiento/);
+  assert.doesNotMatch(out.contentText, /Retrato de Borges/);
+  assert.doesNotMatch(out.contentText, /Enlaces relacionados de la barra lateral/);
+  assert.doesNotMatch(out.contentText, /Contenido\s*\n?\s*1 Biografía/); // ToC
+  assert.doesNotMatch(out.contentText, /\[editar\]/);
+  assert.doesNotMatch(out.contentText, /\[1\]|\[2\]|\[3\]/); // reference markers
+  assert.doesNotMatch(out.contentText, /Plantilla Jorge Luis Borges/); // navbox title
+  assert.doesNotMatch(out.contentText, /El libro de arena/); // navbox-only link
+
+  // The real in-article table (not the infobox) survives, with cells separated by spaces.
+  assert.match(out.contentText, /Obra Año/);
+  assert.match(out.contentText, /Ficciones 1944/);
+  assert.match(out.contentText, /El Aleph 1949/);
+
+  // No two words are glued together across cells or adjacent blocks anywhere in the text.
+  const glued = [
+    "hígadoSepultura", "argentinaReligión", "RelosCementerio", "1899Buenos",
+    "1986Ginebra", "AñoFicciones", "1944ElAleph", "ObraAño",
+  ];
+  for (const bad of glued) assert.doesNotMatch(out.contentText, new RegExp(bad), `"${bad}" must not appear glued`);
+  // General check: no lowercase-to-uppercase run-on across what were separate cells/rows.
+  assert.doesNotMatch(out.contentText, /[a-záéíóúñ]{3,}[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}/, "no glued word boundary");
+
+  // The excerpt is the lead paragraph, not an infobox row.
+  const excerpt = excerptOf(out.contentText);
+  assert.match(excerpt, /^Jorge Luis Borges \(Buenos Aires, 24 de agosto de 1899-Ginebra/);
+  assert.match(excerpt, /escritor, poeta, ensayista y traductor argentino/);
+  assert.doesNotMatch(excerpt, /Información personal/);
+  assert.doesNotMatch(excerpt, /Nombre de nacimiento/);
+});
+
 test("kindFromResponse classifies by content-type and extension", () => {
   assert.equal(kindFromResponse("https://x.test/a.pdf", ""), "pdf");
   assert.equal(kindFromResponse("https://x.test/a", "application/pdf"), "pdf");
@@ -30,7 +66,14 @@ test("kindFromResponse classifies by content-type and extension", () => {
 
 test("excerptOf and wordCount", () => {
   assert.equal(excerptOf("short"), "short");
-  assert.equal(excerptOf("a".repeat(400)).length, 301);
+  // No line has sentence punctuation, so it falls back to the plain first 300 chars.
+  assert.equal(excerptOf("a".repeat(400)), "a".repeat(300));
+  // A qualifying "paragraph" (>= 80 chars, has sentence punctuation) that is itself
+  // over max is truncated with an ellipsis.
+  const longSentence = `This is a long single-line sentence with punctuation. ${"word ".repeat(80)}`;
+  const excerpt = excerptOf(longSentence, 100);
+  assert.ok(excerpt.endsWith("…"));
+  assert.equal(excerpt.length, 101);
   assert.equal(wordCount("one two three"), 3);
   assert.equal(wordCount(""), 0);
 });

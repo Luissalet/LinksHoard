@@ -50,6 +50,42 @@ const MIGRATIONS = [
     value TEXT NOT NULL
   );
   `,
+  // 2: watches — feeds, GitHub repositories and pages checked on a schedule (see watches.js)
+  `
+  CREATE TABLE watches (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    url TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    every_min INTEGER NOT NULL DEFAULT 60,
+    tags TEXT NOT NULL DEFAULT '[]',
+    auto_save INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_check_at TEXT NULL,
+    last_ok_at TEXT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    last_hash TEXT NOT NULL DEFAULT '',
+    last_text TEXT NOT NULL DEFAULT '',
+    item_count INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE watch_items (
+    id TEXT PRIMARY KEY,
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    guid TEXT NOT NULL,
+    url TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    published_at TEXT NULL,
+    seen_at TEXT NOT NULL,
+    link_id TEXT NULL,
+    dismissed INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(watch_id, guid)
+  );
+  CREATE INDEX watch_items_seen ON watch_items(seen_at);
+  CREATE INDEX watch_items_watch ON watch_items(watch_id, seen_at);
+  `,
 ];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

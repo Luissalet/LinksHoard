@@ -5,7 +5,7 @@ import { db, uid, now, transaction, ftsEnabled, isOpen } from "./db.js";
 import { normalizeUrl, siteOf } from "./url.js";
 
 export const KINDS = ["article", "video", "pdf", "image", "other"];
-export const SOURCES = ["manual", "agent", "share", "bookmarklet", "import"];
+export const SOURCES = ["manual", "agent", "share", "bookmarklet", "import", "watch"];
 
 const tagsField = z.array(z.string().trim().min(1).max(40)).max(50);
 

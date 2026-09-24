@@ -7,12 +7,14 @@ import Archivados from "./pages/Archivados.jsx";
 import Favoritos from "./pages/Favoritos.jsx";
 import Reader from "./pages/Reader.jsx";
 import Ajustes from "./pages/Ajustes.jsx";
+import Vigia from "./pages/Vigia.jsx";
 
 const PAGES = [
   { path: "bandeja", label: "Bandeja", icon: "M4 4h16v6H4zM4 14h16v6H4z", component: Bandeja },
   { path: "todo", label: "Todo", icon: "M4 6h16M4 12h16M4 18h16", component: Todo },
   { path: "archivados", label: "Archivados", icon: "M3 5h18v4H3zM5 9v10h14V9M10 13h4", component: Archivados },
   { path: "favoritos", label: "Favoritos", icon: "M12 4l2.5 5.5L20 10l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z", component: Favoritos },
+  { path: "vigia", label: "Vigía", icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM12 9a3 3 0 100 6 3 3 0 000-6z", component: Vigia },
   { path: "ajustes", label: "Ajustes", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h2m12 0h2M12 4v2m0 12v2", component: Ajustes },
 ];
 

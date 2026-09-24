@@ -5,6 +5,7 @@ import { z } from "zod";
 import * as links from "./links.js";
 import * as highlights from "./highlights.js";
 import { enqueueFetch, waitForFetch } from "./fetcher.js";
+import * as watches from "./watches.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
 Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
@@ -12,7 +13,8 @@ save_link is idempotent on the normalized URL: calling it twice for the same pag
 save_link waits briefly for the background fetch so it can report the real title and excerpt; if fetch_status comes back "pending" or "failed", say so plainly instead of inventing a summary — offer refetch_link or suggest the user opens the page.
 Prefer list_links or search_links before read_link when you are not sure which link the user means.
 Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
-delete_link is irreversible: confirm with the user before calling it.`;
+delete_link is irreversible: confirm with the user before calling it.
+Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
 
@@ -196,6 +198,56 @@ export const TOOLS = [
       links.deleteLink(link.id);
       return { deleted: present(link) };
     }),
+
+  tool("watch_add",
+    "Follow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinónimos: sigue este feed, avísame cuando, vigilar página, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
+    z.object({
+      url: z.string().trim().min(1).describe("Feed, GitHub repository or page URL"),
+      kind: z.enum(["auto", "feed", "github", "page"]).default("auto"),
+      name: z.string().trim().max(200).default(""),
+      every_min: z.number().int().min(5).max(10080).default(60),
+      tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+      auto_save: z.boolean().default(true),
+      github: z.enum(["releases", "tags", "commits"]).default("releases"),
+    }), { idempotentHint: true },
+    async (a) => {
+      const out = await watches.addWatch(a);
+      return { ...out.watch, existing: out.existing, baseline_items: out.first_check ? out.first_check.watch.item_count : undefined,
+               first_check_error: out.first_check && !out.first_check.ok ? out.first_check.error : undefined };
+    }),
+
+  tool("watch_list",
+    "List the watches (feeds, GitHub repositories, pages) with kind, interval, last check, last error and item count.\nSinónimos: qué sigo, mis feeds, vigilancias, suscripciones, qué estoy siguiendo",
+    z.object({}), RO,
+    () => ({ watches: watches.listWatches(), stats: watches.stats() })),
+
+  tool("watch_items",
+    "What the watches brought in: new feed entries, releases and page changes, newest first. unread (default true) hides dismissed items; since is an ISO date; watch_id narrows to one watch. Each item has title, url, summary, published_at and the saved link_id when auto_save applied.\nSinónimos: novedades, qué hay nuevo, qué ha salido, últimas releases, cambios, lo que llegó",
+    z.object({
+      watch_id: z.string().optional(),
+      since: z.string().optional(),
+      unread: z.boolean().default(true),
+      limit: z.number().int().min(1).max(200).default(30),
+    }), RO,
+    (a) => ({ items: watches.listItems({ watch_id: a.watch_id || null, since: a.since || null, unread: a.unread, limit: a.limit }) })),
+
+  tool("watch_check",
+    "Check a watch now (or every due watch when watch_id is omitted) instead of waiting for its schedule; returns what was new.\nSinónimos: comprueba ahora, actualiza el feed, mira si hay algo nuevo, refrescar vigilancias",
+    z.object({ watch_id: z.string().optional() }), { idempotentHint: true },
+    async (a) => {
+      if (a.watch_id) return await watches.checkWatch(a.watch_id);
+      return { results: await watches.checkDue() };
+    }),
+
+  tool("watch_dismiss",
+    "Mark a watch item as seen (or unseen with dismissed=false) so it leaves the unread list.\nSinónimos: visto, descartar novedad, marcar como leído, ya lo vi",
+    z.object({ item_id: z.string(), dismissed: z.boolean().default(true) }), { idempotentHint: true },
+    (a) => watches.dismissItem(a.item_id, a.dismissed)),
+
+  tool("watch_remove",
+    "Stop following a watch (its items stay; saved links stay). Confirm with the user first.\nSinónimos: deja de seguir, quitar feed, cancelar suscripción, dejar de vigilar",
+    z.object({ watch_id: z.string() }), { destructiveHint: true },
+    (a) => ({ ok: true, removed: watches.removeWatch(a.watch_id) })),
 
   tool("list_tags",
     "List every tag in use (excluding archived links) with counts, most used first.\nSinónimos: etiquetas, qué etiquetas tengo, lista de etiquetas",

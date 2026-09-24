@@ -7,12 +7,14 @@ import { enqueueFetch } from "./fetcher.js";
 import { renderSharePage } from "./share.js";
 import { manifest, serviceWorker } from "./manifest.js";
 import { dataDir } from "./db.js";
+import * as watches from "./watches.js";
+import * as family from "./hoard-link.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe." });
 
 export function installRoutes(app, { version, dataDirConfigured }) {
   app.get("/api/health", (req, res) => {
-    res.json({ service: "links-hoard", version, dataDirConfigured });
+    res.json({ service: "links-hoard", version, dataDirConfigured, hoard_link: family.healthBlock() });
   });
 
   app.get("/api/state", (req, res) => {
@@ -21,10 +23,33 @@ export function installRoutes(app, { version, dataDirConfigured }) {
       tags: links.listTags(),
       sites: links.listSites(),
       ftsEnabled: links.listLinks({ limit: 1 }).ftsEnabled,
+      watches: watches.stats(),
       dataDir: dataDir(),
       version,
     });
   });
+
+  // Watches (feeds, GitHub repositories, pages checked on a schedule)
+  app.get("/api/watches", (req, res) => res.json({ watches: watches.listWatches(), stats: watches.stats() }));
+  app.post("/api/watches", async (req, res, next) => {
+    try {
+      const out = await watches.addWatch(req.body || {});
+      res.status(out.existing ? 200 : 201).json(out);
+    } catch (e) { next(e); }
+  });
+  app.patch("/api/watches/:id", (req, res) => res.json(watches.updateWatch(req.params.id, req.body || {})));
+  app.delete("/api/watches/:id", (req, res) => res.json({ ok: true, removed: watches.removeWatch(req.params.id) }));
+  app.post("/api/watches/:id/check", async (req, res, next) => {
+    try { res.json(await watches.checkWatch(req.params.id)); } catch (e) { next(e); }
+  });
+  app.post("/api/watches/check", async (req, res, next) => {
+    try { res.json({ results: await watches.checkDue() }); } catch (e) { next(e); }
+  });
+  app.get("/api/watch-items", (req, res) => res.json({ items: watches.listItems({
+    watch_id: req.query.watch_id || null, since: req.query.since || null, unread: req.query.unread === "1" || req.query.unread === "true",
+    limit: Number(req.query.limit || 50) }) }));
+  app.post("/api/watch-items/:id/dismiss", (req, res) => res.json(watches.dismissItem(req.params.id, true)));
+  app.post("/api/watch-items/:id/undismiss", (req, res) => res.json(watches.dismissItem(req.params.id, false)));
 
   // Links
   app.get("/api/links", (req, res) => res.json(links.listLinks(req.query)));

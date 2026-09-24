@@ -41,6 +41,7 @@ El servidor escucha en 127.0.0.1 y solo responde a peticiones cuyo `Host` sea `l
 - **Busca en todo.** Búsqueda de texto completo (SQLite FTS5) en título, descripción, texto extraído, notas y etiquetas. Si el SQLite del sistema no trae FTS5, la aplicación cae automáticamente a una búsqueda `LIKE` y lo indica en Ajustes.
 - **Importa en bloque.** Marcadores HTML de Netscape (lo que exporta cualquier navegador) o una lista de URLs, una por línea. Ambas evitan duplicados con lo que ya tienes.
 - **Resumen semanal.** `GET /api/digest?since=` (y la herramienta MCP `link_digest`) lista lo guardado desde una fecha, agrupado por sitio, con extractos.
+- **Vigía.** La biblioteca también *trae* cosas: sigue un feed RSS/Atom, un repositorio de GitHub (releases, tags o commits — sin token de API, por sus feeds Atom públicos) o una página cualquiera (un diff de texto en cada cambio). Cada uno se comprueba a su intervalo (60 min por defecto, planificador en el propio proceso, `LINKS_WATCHES=0` lo apaga); la primera comprobación es la base, y cada entrada, release o cambio posterior se convierte en una *novedad* y, con `auto_save`, en un enlace guardado con las etiquetas de la vigilancia (origen `watch`), descargado como cualquier otro. Una página que anuncia un feed (`<link rel="alternate" type="application/rss+xml">`) pasa a vigilancia de feed automáticamente. Cada novedad se publica en el bus de la familia como `links.watch.new` (y los cambios de página como `links.watch.changed`), para que una regla del Hoard Hub o el asistente reaccionen: un resumen, una tarjeta, una nota.
 - **Instálala como app.** `manifest.webmanifest` declara un `share_target`: una vez instalada en Android, puedes compartir una página desde cualquier app directamente a Links Hoard.
 
 ## Normalización de URL (la clave de deduplicación)
@@ -65,9 +66,15 @@ Herramientas:
 | `link_digest` | Lo guardado desde una fecha, agrupado por sitio. |
 | `refetch_link` | Volver a descargar y extraer. |
 | `delete_link` | Borrar permanentemente (destructivo; confirmar antes). |
+| `watch_add` | Seguir un feed, un repositorio de GitHub o una página (tipo autodetectado; intervalo, etiquetas, auto_save). |
+| `watch_list` | Las vigilancias con su última comprobación, último error y novedades. |
+| `watch_items` | Lo que han traído las vigilancias (no vistas primero; desde una fecha; por vigilancia). |
+| `watch_check` | Comprobar una vigilancia (o todas las pendientes) ahora. |
+| `watch_dismiss` | Marcar una novedad como vista. |
+| `watch_remove` | Dejar de seguir (las novedades y los enlaces guardados se quedan). |
 | `list_tags` | Todas las etiquetas en uso, con recuento. |
 
-Son 11 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
+Son 17 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
 
 El asistente tiene instrucciones de resumir o citar un enlace solo a partir del texto que devuelve `read_link`, nunca solo del título, y de decir con claridad cuándo una descarga sigue pendiente o falló en lugar de inventar un resumen.
 

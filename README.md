@@ -41,6 +41,7 @@ The server binds 127.0.0.1 and only answers requests whose `Host` is `localhost`
 - **Search everything.** Full-text search (SQLite FTS5) over title, description, extracted text, notes and tags. If the runtime's SQLite build lacks FTS5 the app falls back to a plain `LIKE` search automatically and says so in Ajustes.
 - **Import in bulk.** Netscape bookmarks HTML (what every browser exports) or a plain list of URLs, one per line. Both dedupe against what you already have.
 - **Weekly digest.** `GET /api/digest?since=` (and the `link_digest` MCP tool) lists what was saved since a date, grouped by site, with excerpts.
+- **Watches (Vigía).** The library also *brings things in*: follow an RSS/Atom feed, a GitHub repository (releases, tags or commits — no API token, its public Atom feeds) or a plain page (a text diff on every change). Each is checked on its own interval (default 60 min, scheduler in-process, `LINKS_WATCHES=0` to disable); the first check is a baseline, and every later new entry, release or change becomes a *watch item* and, with `auto_save`, a saved link with the watch's tags (source `watch`), fetched like any other. A page that advertises a feed (`<link rel="alternate" type="application/rss+xml">`) becomes a feed watch automatically. Every new item is posted to the family bus as `links.watch.new` (and page changes as `links.watch.changed`), so a Hoard Hub rule or the assistant can react — a digest, a flashcard, a note.
 - **Install as an app.** `manifest.webmanifest` declares a `share_target`, so once installed on Android you can share a page from any app straight into Links Hoard.
 
 ## URL normalization (the dedupe key)
@@ -49,7 +50,7 @@ Saving is idempotent on a normalized form of the URL: `utm_*`, `fbclid`, `gclid`
 
 ## Connect an assistant
 
-In **Ajustes** (or via `faustus-plugin.json`) an assistant configured for local MCP servers over stdio can connect using `server/mcp.js`, `LINKS_URL` and `LINKS_TOKEN_FILE`. The bridge never opens the database itself: every call is proxied over HTTP to the running app, authenticated with a random token written fresh to `<data dir>/mcp-token` at every startup.
+In **Ajustes** (or via `faustus-plugin.json`) an assistant configured for local MCP servers over stdio can connect using `server/mcp.js`, `LINKS_URL` and `LINKS_TOKEN_FILE`. The bridge never opens the database itself: every call is proxied over HTTP to the running app, authenticated with a random token written fresh to `<data dir>/mcp-token` at every startup. The app is also on the family bus (Hoard Link 0.4, `server/hoard-link.js`): every agent call is posted to the Hoard Hub as an `agent.call` event, `/api/health` carries the `hoard_link` block, and the hub's proxy (`POST <hub>/api/apps/links/call`) can reach these tools on behalf of any sibling app.
 
 Tools:
 
@@ -65,9 +66,15 @@ Tools:
 | `link_digest` | What was saved since a date, grouped by site. |
 | `refetch_link` | Re-download and re-extract. |
 | `delete_link` | Permanently delete (destructive; confirm first). |
+| `watch_add` | Follow a feed, a GitHub repository or a page for new things (kind auto-detected; interval, tags, auto_save). |
+| `watch_list` | The watches with last check, last error and item count. |
+| `watch_items` | What the watches brought in (unread first; since; per watch). |
+| `watch_check` | Check one watch (or every due one) now. |
+| `watch_dismiss` | Mark an item as seen. |
+| `watch_remove` | Stop following (items and saved links stay). |
 | `list_tags` | Every tag in use, with counts. |
 
-11 tools in total. `GET /api/agent/tools` always reflects the live list. Tool descriptions end with a `Sinónimos:` line of Spanish words, so a Spanish-speaking user's phrasing ("guarda esto", "resumen de la semana") matches the right tool.
+17 tools in total. `GET /api/agent/tools` always reflects the live list. Tool descriptions end with a `Sinónimos:` line of Spanish words, so a Spanish-speaking user's phrasing ("guarda esto", "resumen de la semana") matches the right tool.
 
 The assistant is instructed to summarize or quote a link only from the text `read_link` returns, never from the title alone, and to say plainly when a fetch is still pending or failed rather than guessing.
 

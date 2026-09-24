@@ -5,6 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { TOOLS, AGENT_INSTRUCTIONS, callTool } from "./agent-tools.js";
+import * as family from "./hoard-link.js";
 
 export function writeToken(dataDir) {
   const token = crypto.randomBytes(32).toString("hex");
@@ -27,7 +28,8 @@ export function installAgentRoutes(app, { token }) {
     res.json({ instructions: AGENT_INSTRUCTIONS, tools: toolCatalog() });
   });
 
-  app.post("/api/agent/call", async (req, res) => {
+  // family.recordAgentRoute: one agent.call event per call on the hub's bus.
+  app.post("/api/agent/call", family.recordAgentRoute(async (req, res) => {
     const header = req.headers.authorization || "";
     const given = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
     const ok = given.length === token.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(token));
@@ -43,5 +45,5 @@ export function installAgentRoutes(app, { token }) {
         : error.message;
       res.status(status).json({ error: message });
     }
-  });
+  }));
 }

@@ -62,7 +62,7 @@ const RO = { readOnlyHint: true, idempotentHint: true };
 
 export const TOOLS = [
   tool("save_link",
-    "Save a URL to the read-later library. Idempotent on the normalized URL (strips tracking params and trailing slash): saving an already-saved page returns it unchanged with existing: true. Waits up to 10s for the background fetch so it can return the real title, site and excerpt; if the fetch is still pending or failed, that is reported instead of guessed.\nSinónimos: guarda esto, guardar enlace, para luego, guarda este artículo, marcador, guardar página",
+    "Save a URL to the read-later library (idempotent; waits for the fetch). Sinónimos: guarda esto, para luego\nSave a URL to the read-later library. Idempotent on the normalized URL (strips tracking params and trailing slash): saving an already-saved page returns it unchanged with existing: true. Waits up to 10s for the background fetch so it can return the real title, site and excerpt; if the fetch is still pending or failed, that is reported instead of guessed.\nSinónimos: guarda esto, guardar enlace, para luego, guarda este artículo, marcador, guardar página",
     z.object({
       url: z.string().trim().min(1).describe("The URL to save"),
       tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
@@ -76,22 +76,23 @@ export const TOOLS = [
     }),
 
   tool("list_links",
-    "List saved links, most recent first. state: unread (default), read, archived or all. Optional tag, site and since (ISO date, saved_at >= since). Paginated (limit up to 100).\nSinónimos: enlaces, lo que guardé, bandeja, qué tengo guardado, lista de lecturas, pendientes de leer",
+    "List saved links by state, tag, site or date. Sinónimos: enlaces, lo que guardé, bandeja, pendientes de leer\nList saved links, most recent first. state: unread (default), read, archived or all. Optional tag, site and since (ISO date, saved_at >= since). Paginated (limit up to 100).\nSinónimos: enlaces, lo que guardé, bandeja, qué tengo guardado, lista de lecturas, pendientes de leer",
     z.object({
       state: z.enum(["unread", "read", "archived", "all"]).default("unread"),
       tag: z.string().max(40).optional(),
       site: z.string().max(200).optional(),
       since: z.string().max(40).optional(),
       limit: z.number().int().min(1).max(100).default(30),
+      cursor: z.number().int().min(0).default(0).describe("Offset for paging; use next_cursor from the previous call"),
     }), RO,
     (a) => {
-      const out = links.listLinks({ state: a.state, tag: a.tag, site: a.site, limit: a.limit });
+      const out = links.listLinks({ state: a.state, tag: a.tag, site: a.site, limit: a.limit, cursor: a.cursor });
       const items = a.since ? out.items.filter((l) => l.saved_at >= a.since) : out.items;
-      return { total: out.total, items: items.map(present) };
+      return { total: out.total, items: items.map(present), next_cursor: out.nextCursor };
     }),
 
   tool("search_links",
-    "Full-text search over title, description, extracted content, notes and tags. Returns the same shape as list_links.\nSinónimos: buscar enlace, encontrar artículo, buscar en lo guardado, dónde leí, busca esto",
+    "Full-text search over saved links. Sinónimos: busca en mis enlaces, dónde guardé, aquel artículo\nFull-text search over title, description, extracted content, notes and tags. Returns the same shape as list_links.\nSinónimos: buscar enlace, encontrar artículo, buscar en lo guardado, dónde leí, busca esto",
     z.object({ q: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).default(30) }), RO,
     ({ q, limit }) => {
       const out = links.listLinks({ state: "all", q, limit });
@@ -99,7 +100,7 @@ export const TOOLS = [
     }),
 
   tool("read_link",
-    "Read a saved link's extracted text, paginated by characters (max_chars, default 4000; offset to page further). Identify by id or url. Returns title, byline, site, the text slice, whether more remains, and highlights. Summarize only from this text, never from the title alone.\nSinónimos: leer artículo, texto del enlace, qué dice, contenido del artículo, léeme esto",
+    "Read a saved link's extracted text, paginated; summarize only from it. Sinónimos: leer artículo, qué dice\nRead a saved link's extracted text, paginated by characters (max_chars, default 4000; offset to page further). Identify by id or url. Returns title, byline, site, the text slice, whether more remains, and highlights. Summarize only from this text, never from the title alone.\nSinónimos: leer artículo, texto del enlace, qué dice, contenido del artículo, léeme esto",
     z.object({
       id: z.string().optional(),
       url: z.string().optional(),
@@ -144,7 +145,7 @@ export const TOOLS = [
     }),
 
   tool("mark_link",
-    "Change a saved link's state: read, unread, archived or favorite (state applies; on/off toggles it, default true).\nSinónimos: marcar leído, marcar como leído, archivar, marcar favorito, destacar, marcar sin leer",
+    "Change a saved link's state: read, unread, archived, favorite. Sinónimos: marcar leído, archivar, favorito\nChange a saved link's state: read, unread, archived or favorite (state applies; on/off toggles it, default true).\nSinónimos: marcar leído, marcar como leído, archivar, marcar favorito, destacar, marcar sin leer",
     z.object({
       id: z.string().optional(),
       url: z.string().optional(),
@@ -180,7 +181,7 @@ export const TOOLS = [
     }),
 
   tool("refetch_link",
-    "Re-download and re-extract a saved link's page (id or url). Use when fetch_status is failed or the page changed.\nSinónimos: reintentar descarga, actualizar artículo, volver a leer, refrescar enlace",
+    "Re-download and re-extract a saved link's page. Sinónimos: volver a descargar, actualizar enlace\nRe-download and re-extract a saved link's page (id or url). Use when fetch_status is failed or the page changed.\nSinónimos: reintentar descarga, actualizar artículo, volver a leer, refrescar enlace",
     z.object({ id: z.string().optional(), url: z.string().optional() }), { idempotentHint: true },
     async (a) => {
       const link = resolveLinkOrFail(a);
@@ -200,7 +201,7 @@ export const TOOLS = [
     }),
 
   tool("watch_add",
-    "Follow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinónimos: sigue este feed, avísame cuando, vigilar página, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
+    "Follow a feed, a GitHub repository or a page for new things. Sinónimos: sigue este feed, avísame, vigilar\nFollow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinónimos: sigue este feed, avísame cuando, vigilar página, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
     z.object({
       url: z.string().trim().min(1).describe("Feed, GitHub repository or page URL"),
       kind: z.enum(["auto", "feed", "github", "page"]).default("auto"),
@@ -217,12 +218,12 @@ export const TOOLS = [
     }),
 
   tool("watch_list",
-    "List the watches (feeds, GitHub repositories, pages) with kind, interval, last check, last error and item count.\nSinónimos: qué sigo, mis feeds, vigilancias, suscripciones, qué estoy siguiendo",
+    "List the watches with last check, error and item count. Sinónimos: qué sigo, mis feeds, vigilancias\nList the watches (feeds, GitHub repositories, pages) with kind, interval, last check, last error and item count.\nSinónimos: qué sigo, mis feeds, vigilancias, suscripciones, qué estoy siguiendo",
     z.object({}), RO,
     () => ({ watches: watches.listWatches(), stats: watches.stats() })),
 
   tool("watch_items",
-    "What the watches brought in: new feed entries, releases and page changes, newest first. unread (default true) hides dismissed items; since is an ISO date; watch_id narrows to one watch. Each item has title, url, summary, published_at and the saved link_id when auto_save applied.\nSinónimos: novedades, qué hay nuevo, qué ha salido, últimas releases, cambios, lo que llegó",
+    "What the watches brought in: entries, releases, changes. Sinónimos: novedades, qué hay nuevo, últimas releases\nWhat the watches brought in: new feed entries, releases and page changes, newest first. unread (default true) hides dismissed items; since is an ISO date; watch_id narrows to one watch. Each item has title, url, summary, published_at and the saved link_id when auto_save applied.\nSinónimos: novedades, qué hay nuevo, qué ha salido, últimas releases, cambios, lo que llegó",
     z.object({
       watch_id: z.string().optional(),
       since: z.string().optional(),
@@ -232,7 +233,7 @@ export const TOOLS = [
     (a) => ({ items: watches.listItems({ watch_id: a.watch_id || null, since: a.since || null, unread: a.unread, limit: a.limit }) })),
 
   tool("watch_check",
-    "Check a watch now (or every due watch when watch_id is omitted) instead of waiting for its schedule; returns what was new.\nSinónimos: comprueba ahora, actualiza el feed, mira si hay algo nuevo, refrescar vigilancias",
+    "Check a watch now (or every due one) and return what was new. Sinónimos: comprueba ahora, actualiza el feed\nCheck a watch now (or every due watch when watch_id is omitted) instead of waiting for its schedule; returns what was new.\nSinónimos: comprueba ahora, actualiza el feed, mira si hay algo nuevo, refrescar vigilancias",
     z.object({ watch_id: z.string().optional() }), { idempotentHint: true },
     async (a) => {
       if (a.watch_id) return await watches.checkWatch(a.watch_id);

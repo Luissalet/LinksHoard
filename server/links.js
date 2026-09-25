@@ -1,5 +1,6 @@
 // Links store: CRUD, state filters, tags/sites facets, digest and search
 // (FTS5 when available, LIKE fallback otherwise — see db.js ftsEnabled()).
+import { resolveSince } from "./since.js";
 import { z } from "zod";
 import { db, uid, now, transaction, ftsEnabled, isOpen } from "./db.js";
 import { normalizeUrl, siteOf } from "./url.js";
@@ -136,6 +137,7 @@ export const listFilter = z.object({
   tag: z.string().trim().max(40).optional(),
   site: z.string().trim().max(200).optional(),
   q: z.string().trim().max(200).optional(),
+  since: z.string().trim().max(40).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.coerce.number().int().min(0).default(0),
 });
@@ -166,6 +168,8 @@ export function listLinks(query = {}) {
   const params = [];
   if (f.tag) { clauses.push("tags LIKE ?"); params.push(`%"${f.tag}"%`); }
   if (f.site) { clauses.push("site = ?"); params.push(f.site); }
+  const since = resolveSince(f.since);
+  if (since) { clauses.push("saved_at >= ?"); params.push(since); }
   let idFilter = null;
   if (f.q) idFilter = new Set(searchIds(f.q));
   if (idFilter) {
@@ -196,7 +200,8 @@ export function listSites() {
 }
 
 /** Links saved since a date (inclusive), with excerpts, grouped by site — used by the digest endpoint/tool. */
-export function digestSince(since) {
+export function digestSince(sinceInput) {
+  const since = resolveSince(sinceInput) || resolveSince("7d");
   const items = db().prepare("SELECT * FROM links WHERE saved_at >= ? ORDER BY saved_at DESC").all(since).map(row);
   const bySite = new Map();
   for (const link of items) {

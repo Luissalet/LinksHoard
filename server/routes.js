@@ -122,8 +122,7 @@ export function installRoutes(app, { version, dataDirConfigured }) {
 
   // Digest
   app.get("/api/digest", (req, res) => {
-    const since = req.query.since || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    res.json(links.digestSince(since));
+    res.json(links.digestSince(req.query.since || "7d"));
   });
 
   // PWA share target + bookmarklet endpoint, and manifest/service worker.

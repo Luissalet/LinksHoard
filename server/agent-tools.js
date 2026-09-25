@@ -1,6 +1,7 @@
 // Tools exposed to the assistant. One list drives /api/agent/call and the
 // MCP bridge (server/mcp.js). Descriptions end with a "Sinónimos:" line of
 // Spanish words for the client's tool index.
+import { SINCE_HELP } from "./since.js";
 import { z } from "zod";
 import * as links from "./links.js";
 import * as highlights from "./highlights.js";
@@ -76,19 +77,18 @@ export const TOOLS = [
     }),
 
   tool("list_links",
-    "List saved links by state, tag, site or date. Sinónimos: enlaces, lo que guardé, bandeja, pendientes de leer\nList saved links, most recent first. state: unread (default), read, archived or all. Optional tag, site and since (ISO date, saved_at >= since). Paginated (limit up to 100).\nSinónimos: enlaces, lo que guardé, bandeja, qué tengo guardado, lista de lecturas, pendientes de leer",
+    "List saved links by state, tag, site or date. Sinónimos: enlaces, lo que guardé, bandeja, pendientes de leer\nList saved links, most recent first. state: unread (default), read, archived or all. Optional tag, site and since (an ISO date, an age like 7d or hace 2 horas, or hoy/ayer/esta semana). Paginated (limit up to 100).\nSinónimos: enlaces, lo que guardé, bandeja, qué tengo guardado, lista de lecturas, pendientes de leer",
     z.object({
       state: z.enum(["unread", "read", "archived", "all"]).default("unread"),
       tag: z.string().max(40).optional(),
       site: z.string().max(200).optional(),
-      since: z.string().max(40).optional(),
+      since: z.string().max(40).optional().describe(SINCE_HELP),
       limit: z.number().int().min(1).max(100).default(30),
       cursor: z.number().int().min(0).default(0).describe("Offset for paging; use next_cursor from the previous call"),
     }), RO,
     (a) => {
-      const out = links.listLinks({ state: a.state, tag: a.tag, site: a.site, limit: a.limit, cursor: a.cursor });
-      const items = a.since ? out.items.filter((l) => l.saved_at >= a.since) : out.items;
-      return { total: out.total, items: items.map(present), next_cursor: out.nextCursor };
+      const out = links.listLinks({ state: a.state, tag: a.tag, site: a.site, since: a.since, limit: a.limit, cursor: a.cursor });
+      return { total: out.total, items: out.items.map(present), next_cursor: out.nextCursor };
     }),
 
   tool("search_links",
@@ -169,8 +169,8 @@ export const TOOLS = [
     }),
 
   tool("link_digest",
-    "Links saved since a date (ISO, e.g. 2026-09-01), with excerpts, grouped by site. Good for a weekly recap.\nSinónimos: resumen de la semana, qué guardé esta semana, digest, novedades guardadas",
-    z.object({ since: z.string().trim().min(4).max(40) }), RO,
+    "Links saved since a date or an age (\"7d\", \"esta semana\"), with excerpts, grouped by site. Weekly recap.\nSinónimos: resumen de la semana, qué guardé esta semana, digest, novedades guardadas",
+    z.object({ since: z.string().trim().max(40).default("7d").describe(SINCE_HELP) }), RO,
     ({ since }) => {
       const out = links.digestSince(since);
       return {

@@ -24,6 +24,7 @@ test("tool list is public and complete, with Spanish synonyms", async () => {
   assert.ok(r.body.instructions.length > 100);
   for (const t of r.body.tools) {
     assert.match(t.description, /\nSinónimos: /, `${t.name} has a Sinónimos line`);
+    assert.ok(t.description.split("\n", 1)[0].length <= 110, `${t.name} has a short catalog headline`);
     assert.equal(t.inputSchema.type, "object");
     assert.ok(t.annotations && typeof t.annotations.readOnlyHint === "boolean");
   }

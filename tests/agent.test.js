@@ -110,7 +110,20 @@ test("add_highlight stores a quote with a note", async () => {
   const h = await s.agent("add_highlight", { id: linkId, text: "fixture body text", note: "great line" });
   assert.equal(h.status, 200);
   assert.equal(h.body.note, "great line");
+  const retry = await s.agent("add_highlight", { id: linkId, text: "fixture body text", note: "great line" });
+  assert.equal(retry.body.id, h.body.id);
+  assert.equal(retry.body.existing, true);
   const read = await s.agent("read_link", { id: linkId, max_chars: 200 });
+  assert.equal(read.body.highlights.length, 1);
+});
+
+test("agent cannot save a fabricated quote as an article highlight", async () => {
+  const invented = await s.agent("add_highlight", {
+    id: linkId, text: "The moon is made of blue cheese", note: "invented quote",
+  });
+  assert.equal(invented.status, 400);
+  assert.match(invented.body.error, /not found|no aparece/i);
+  const read = await s.agent("read_link", { id: linkId });
   assert.equal(read.body.highlights.length, 1);
 });
 

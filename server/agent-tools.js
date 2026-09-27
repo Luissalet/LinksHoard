@@ -163,11 +163,18 @@ export const TOOLS = [
     }),
 
   tool("add_highlight",
-    "Save a highlighted quote from a link's text, with an optional note. Identify the link by id or url.\nSinónimos: subrayar, destacar texto, guardar cita, anotar frase",
-    z.object({ id: z.string().optional(), url: z.string().optional(), text: z.string().trim().min(1).max(5000), note: z.string().trim().max(2000).default("") }), {},
+    "Save a verbatim quote from read_link, with an optional note. Identify the link by id or url.\nThe quote must appear in the extracted article text; read_link first. If extraction is pending or failed, do not invent a quote.\nSinónimos: subrayar, destacar texto, guardar cita, anotar frase",
+    z.object({ id: z.string().optional(), url: z.string().optional(), text: z.string().trim().min(1).max(5000), note: z.string().trim().max(2000).default("") }), { idempotentHint: true },
     (a) => {
       const link = resolveLinkOrFail(a);
-      return highlights.addHighlight(link.id, { text: a.text, note: a.note });
+      const source = (link.content_text || "").replace(/\s+/gu, " ").trim();
+      if (!source) fail("No hay texto extraído para citar. Espera a la descarga o usa refetch_link.");
+      if (!source.includes(a.text.replace(/\s+/gu, " ").trim())) {
+        fail("La cita no aparece en el texto extraído. Usa read_link y copia un fragmento literal.");
+      }
+      const previous = highlights.listHighlights(link.id).find((h) => h.text === a.text && h.note === a.note);
+      if (previous) return { ...previous, existing: true };
+      return { ...highlights.addHighlight(link.id, { text: a.text, note: a.note }), existing: false };
     }),
 
   tool("link_digest",

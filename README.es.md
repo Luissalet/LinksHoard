@@ -60,6 +60,7 @@ Herramientas:
 | `list_links` | Listar por estado (no leído/leído/archivado/todo), etiqueta, sitio, desde. |
 | `search_links` | Búsqueda de texto completo. |
 | `read_link` | Leer el texto extraído, paginado por caracteres; incluye subrayados. |
+| `import_video_transcript` | Importar subtítulos disponibles de un vídeo de YouTube guardado para leerlos, buscarlos y citarlos. Requiere `python -m yt_dlp`; no descarga el vídeo. |
 | `tag_link` | Añadir/quitar etiquetas. |
 | `mark_link` | Alternar leído/no leído/archivado/favorito. |
 | `add_highlight` | Guardar una cita subrayada con nota. |

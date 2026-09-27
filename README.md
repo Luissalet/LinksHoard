@@ -60,6 +60,7 @@ Tools:
 | `list_links` | List by state (unread/read/archived/all), tag, site, since. |
 | `search_links` | Full-text search. |
 | `read_link` | Read the extracted text, paginated by characters; includes highlights. |
+| `import_video_transcript` | Import available captions from a saved YouTube video for reading, search and quotes. Requires `python -m yt_dlp`; does not download the video. |
 | `tag_link` | Add/remove tags. |
 | `mark_link` | Toggle read/unread/archived/favorite. |
 | `add_highlight` | Save a highlighted quote with a note. |

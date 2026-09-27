@@ -6,6 +6,7 @@ import { z } from "zod";
 import * as links from "./links.js";
 import * as highlights from "./highlights.js";
 import { enqueueFetch, waitForFetch } from "./fetcher.js";
+import { importTranscript } from "./transcript.js";
 import * as watches from "./watches.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
@@ -13,6 +14,7 @@ Summarize or quote a link only from the text read_link returns, never from the t
 save_link is idempotent on the normalized URL: calling it twice for the same page returns the existing link (existing: true) instead of duplicating it.
 save_link waits briefly for the background fetch so it can report the real title and excerpt; if fetch_status comes back "pending" or "failed", say so plainly instead of inventing a summary — offer refetch_link or suggest the user opens the page.
 Prefer list_links or search_links before read_link when you are not sure which link the user means.
+For a saved YouTube video whose read_link text is empty or only metadata, import_video_transcript obtains available captions, then read_link can quote and summarize them.
 Favorite is a dedicated boolean state, not a tag: use mark_link with state "favorite". tag_link only changes labels, even if a label is named "favorita".
 Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
 delete_link is irreversible: confirm with the user before calling it.
@@ -176,6 +178,11 @@ export const TOOLS = [
       if (previous) return { ...previous, existing: true };
       return { ...highlights.addHighlight(link.id, { text: a.text, note: a.note }), existing: false };
     }),
+
+  tool("import_video_transcript",
+    "Import subtitles of a saved YouTube video into searchable text.\nDownloads available Spanish or English captions, not the video, and makes them available to read_link, search_links and highlights. Requires Python yt-dlp; reports when captions are unavailable. Identify the saved video by id or url.\nSinónimos: transcribir vídeo, leer subtítulos, importar transcripción, resumir vídeo de YouTube",
+    z.object({ id: z.string().optional(), url: z.string().optional() }), { idempotentHint: true, openWorldHint: true },
+    (a) => importTranscript(resolveLinkOrFail(a))),
 
   tool("link_digest",
     "Links saved since a date or an age (\"7d\", \"esta semana\"), with excerpts, grouped by site. Weekly recap.\nSinónimos: resumen de la semana, qué guardé esta semana, digest, novedades guardadas",

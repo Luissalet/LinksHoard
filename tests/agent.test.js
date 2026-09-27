@@ -29,6 +29,8 @@ test("tool list is public and complete, with Spanish synonyms", async () => {
     assert.ok(t.annotations && typeof t.annotations.readOnlyHint === "boolean");
   }
   assert.equal(r.body.tools.find((t) => t.name === "delete_link").annotations.destructiveHint, true);
+  assert.match(r.body.instructions, /Favorite is a dedicated boolean state/);
+  assert.match(r.body.tools.find((t) => t.name === "mark_link").description, /not a tag/);
   assert.equal(TOOLS.length, EXPECTED.length);
 });
 
@@ -86,6 +88,8 @@ test("read_link paginates by characters and never trusts the title", async () =>
 test("tag_link adds and removes", async () => {
   const added = await s.agent("tag_link", { id: linkId, add: ["favorita", "leer-luego"] });
   assert.deepEqual(added.body.tags.sort(), ["favorita", "ia", "leer-luego"].sort());
+  assert.equal(added.body.favorite, false);
+  assert.match(added.body.state_hint, /mark_link/);
   const removed = await s.agent("tag_link", { id: linkId, remove: ["favorita"] });
   assert.ok(!removed.body.tags.includes("favorita"));
 });

@@ -13,6 +13,7 @@ Summarize or quote a link only from the text read_link returns, never from the t
 save_link is idempotent on the normalized URL: calling it twice for the same page returns the existing link (existing: true) instead of duplicating it.
 save_link waits briefly for the background fetch so it can report the real title and excerpt; if fetch_status comes back "pending" or "failed", say so plainly instead of inventing a summary — offer refetch_link or suggest the user opens the page.
 Prefer list_links or search_links before read_link when you are not sure which link the user means.
+Favorite is a dedicated boolean state, not a tag: use mark_link with state "favorite". tag_link only changes labels, even if a label is named "favorita".
 Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
 delete_link is irreversible: confirm with the user before calling it.
 Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.`;
@@ -129,7 +130,7 @@ export const TOOLS = [
     }),
 
   tool("tag_link",
-    "Add and/or remove tags on a saved link (id or url). Unlisted tags are left untouched.\nSinónimos: etiquetar, poner etiqueta, quitar etiqueta, clasificar enlace",
+    "Add or remove labels only; this does not mark a link as favorite.\nUse id or url. Unlisted tags are left untouched. A tag named favorita is still just a label; use mark_link with state favorite to change actual favorite status.\nSinónimos: etiquetar, poner etiqueta, quitar etiqueta, clasificar enlace",
     z.object({
       id: z.string().optional(),
       url: z.string().optional(),
@@ -141,11 +142,12 @@ export const TOOLS = [
       const set = new Set(link.tags);
       for (const t of a.add) set.add(t);
       for (const t of a.remove) set.delete(t);
-      return present(links.updateLink(link.id, { tags: [...set] }));
+      const updated = links.updateLink(link.id, { tags: [...set] });
+      return { ...present(updated), state_hint: "Only tags changed. To set actual favorite status, use mark_link with state favorite." };
     }),
 
   tool("mark_link",
-    "Change a saved link's state: read, unread, archived, favorite.\nChange a saved link's state: read, unread, archived or favorite (state applies; on/off toggles it, default true).\nSinónimos: marcar leído, marcar como leído, archivar, marcar favorito, destacar, marcar sin leer",
+    "Set actual read, archive or favorite status (not a tag).\nSet state to read, unread, archived or favorite; on/off toggles it (default true). To mark a link as favorite, use this tool with state favorite, not tag_link.\nSinónimos: marcar leído, marcar como leído, archivar, marcar favorito, destacar, marcar sin leer",
     z.object({
       id: z.string().optional(),
       url: z.string().optional(),

@@ -7,7 +7,7 @@
 // user actually reads (how many read links share a tag). Never the same link twice in 14 days (30 for a re-read). The day's picks are
 // stored, so the list is the same all day and tomorrow brings others.
 import crypto from "node:crypto";
-import { db, getSetting, setSetting, now } from "./db.js";
+import { db, getSetting, setSetting } from "./db.js";
 import * as family from "./hoard-link.js";
 import { appLink } from "./public-url.js";
 
@@ -114,7 +114,7 @@ export function resurface(count = DEFAULT_COUNT, at = new Date()) {
     const have = new Set(stored.ids);
     const need = want - stored.ids.length;
     const fresh = candidates(at).filter((c) => !have.has(c.link.id)).slice(0, Math.max(0, need));
-    const stamp = now();
+    const stamp = at.toISOString();
     for (const c of fresh) {
       db().prepare("UPDATE links SET resurfaced_at = ? WHERE id = ?").run(stamp, c.link.id);
       stored.ids.push(c.link.id);

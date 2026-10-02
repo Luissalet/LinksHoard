@@ -217,3 +217,45 @@ test("a private address is refused without the opt-in, and the error says why", 
     process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
   }
 });
+
+test("a public address is read through the family hub when it is there, with the stored validators", async () => {
+  const calls = [];
+  const hub = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/api/web/status") return res.end(JSON.stringify({ ok: true, enabled: true }));
+      if (req.url === "/api/web/fetch") {
+        const payload = JSON.parse(body);
+        calls.push(payload);
+        const text = RSS([{ title: "Via the hub", link: "https://news.example.com/1" }]);
+        return res.end(JSON.stringify({ ok: true, status: 200, tier: "http", final_url: payload.url, content_type: "application/rss+xml", text, etag: '"hub-1"' }));
+      }
+      res.end("{}");
+    });
+  });
+  await new Promise((r) => hub.listen(0, "127.0.0.1", r));
+  family.configure({ app: "links", dataDir: s.dataDir, hub: `http://127.0.0.1:${hub.address().port}` });
+  const { webForgetAvailability } = await import("../server/hoard-commons/fam-web.js");
+  webForgetAvailability();
+  process.env.LINKS_ALLOW_PRIVATE_URLS = "0";
+  try {
+    const add = await s.agent("watch_add", { url: "https://news.example.com/feed.xml", kind: "feed", auto_save: false });
+    assert.equal(add.status, 200, JSON.stringify(add.body));
+    assert.equal(add.body.name, "Fixture Feed");
+    assert.equal(add.body.baseline_items, 1);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://news.example.com/feed.xml");
+    assert.equal(calls[0].respect_robots, false, "a feed the person asked for is not held back by robots.txt");
+    const again = await s.agent("watch_check", { watch_id: add.body.id });
+    assert.equal(again.status, 200);
+    assert.equal(calls[1].etag, '"hub-1"', "the ETag the hub reported goes back on the next check");
+    await s.agent("watch_remove", { watch_id: add.body.id });
+  } finally {
+    process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
+    family.configure({ app: "links", dataDir: s.dataDir, hub: "http://127.0.0.1:1" });
+    webForgetAvailability();
+    await new Promise((r) => hub.close(r));
+  }
+});

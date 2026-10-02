@@ -447,6 +447,16 @@ export const TOOLS = [
     }),
 ];
 
+/** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
+export function callTimeoutMs(name, args = {}) {
+  if ((name === "media_download" || name === "media_retry" || name === "media_audio_for_asr") && args.wait !== false) return ((Number(args.timeout_s) || 150) + 30) * 1000;
+  if (name === "media_status" && args.wait_s) return (Number(args.wait_s) + 30) * 1000;
+  if (name === "media_tools" && args.update) return 6 * 60_000;
+  if (name === "media_probe" || name === "media_info") return 120_000;
+  if (name === "media_subtitles") return 180_000;
+  return 90_000;
+}
+
 export function findTool(name) {
   return TOOLS.find((t) => t.name === name);
 }

@@ -9,7 +9,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { bootServer, tempDir } from "./helpers.js";
 import { installFakes } from "./media-fakes.js";
-import { callTimeoutMs, postJson } from "../server/bridge-call.js";
+import { callTimeoutMs } from "../server/agent-tools.js";
+import { postJson } from "../server/hoard-commons/express.js";
 import { resetToolsCache } from "../server/media.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "mcp.js");
@@ -75,6 +76,10 @@ test("the bridge waits as long as the call asks for, and says when the app is cl
   assert.equal(callTimeoutMs("media_status", { id: "x", wait_s: 60 }), 90_000);
   assert.equal(callTimeoutMs("media_tools", { update: true }), 360_000);
   assert.equal(callTimeoutMs("list_links", {}), 90_000);
+  assert.equal(callTimeoutMs("media_audio_for_asr", { timeout_s: 300 }), 330_000);
+  assert.equal(callTimeoutMs("media_audio_for_asr", { wait: false }), 90_000);
+  assert.equal(callTimeoutMs("media_info", {}), 120_000);
+  assert.equal(callTimeoutMs("media_subtitles", {}), 180_000);
   const unauthorised = await postJson(s.base, "/api/agent/call", { name: "list_links", arguments: {} }, { token: "nope" });
   assert.equal(unauthorised.status, 401);
   assert.equal(unauthorised.ok, false);

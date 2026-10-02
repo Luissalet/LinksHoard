@@ -5,13 +5,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { detectPlatform, isKnownPlatform, OTHER_PLATFORM, safeName, revealCommand, fileKind, mimeOf, normalizeMediaUrl, resolveTool, resetToolsCache, defaultSiblingDir } from "../server/media.js";
 import {
-  detectPlatform, isKnownPlatform, OTHER_PLATFORM, videoSelector, buildYtdlpArgs, buildGalleryArgs, buildProbeArgs, cookieAttempts, cookieArgs,
-  parseYtdlpLine, ProgressTracker, formatSpeed, formatEta, explainFailure, safeName, parseCodecs, needsTranscode, revealCommand, fileKind, mimeOf,
-  normalizeMediaUrl, OUTPUT_TEMPLATE,
-} from "../server/media.js";
-import { MediaQueue } from "../server/media-queue.js";
-import { parseCommandSpec, which, resolveTool, resetToolsCache, installHint, INSTALL_COMMAND } from "../server/media-tools.js";
+  videoSelector, buildYtdlpArgs, buildGalleryArgs, buildProbeArgs, cookieAttempts, cookieArgs, parseYtdlpLine, ProgressTracker, formatSpeed, formatEta,
+  explainFailure, parseCodecs, needsTranscode, OUTPUT_TEMPLATE, MediaQueue, parseCommandSpec, which, installHint, INSTALL_COMMAND, setLanguage,
+} from "../server/hoard-commons/media.js";
 import { installFakes } from "./media-fakes.js";
 import { tempDir } from "./helpers.js";
 
@@ -50,7 +48,7 @@ test("URLs are normalised and refused when they are not http(s)", () => {
   assert.throws(() => normalizeMediaUrl(""), /Falta la URL/);
   assert.throws(() => normalizeMediaUrl("ftp://example.com/x"), /http\(s\)/);
   assert.throws(() => normalizeMediaUrl("file:///etc/passwd"), /http\(s\)/);
-  assert.throws(() => normalizeMediaUrl("hola"), /http\(s\)|válida/);
+  assert.throws(() => normalizeMediaUrl("hola"), /http\(s\)|válida|apunta/);
 });
 
 test("video format selector prefers H.264 + AAC and honours the height cap", () => {
@@ -284,8 +282,16 @@ test("tool lookup order: env, PATH, sibling app folder, python module", async ()
     assert.equal(ff.found, true);
     assert.equal(ff.version, "6.1-fake");
     const noFf = await resolveTool("ffmpeg", { env: noEnv, siblingDir: path.join(dir, "nope"), refresh: true });
-    assert.equal(noFf.found, false);
-    assert.match(noFf.error, /LINKS_FFMPEG/);
+    if (noFf.found) {
+      // the shared lookup also tries the usual folders (/usr/bin, /usr/local/bin, Homebrew) after PATH
+      assert.equal(noFf.how, "system");
+    } else {
+      assert.match(noFf.error, /LINKS_FFMPEG|HOARD_FFMPEG/);
+    }
+    // a Links-specific override beats everything, a family one too
+    const viaFamily = await resolveTool("ffmpeg", { env: { ...noEnv, HOARD_FFMPEG: fakes.env.LINKS_FFMPEG }, siblingDir: path.join(dir, "nope"), refresh: true });
+    assert.equal(viaFamily.how, "env");
+    assert.equal(viaFamily.version, "6.1-fake");
   } finally {
     resetToolsCache();
     fs.rmSync(dir, { recursive: true, force: true });

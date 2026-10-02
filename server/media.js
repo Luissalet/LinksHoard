@@ -9,6 +9,13 @@
 // the table too, never into sidecar files. A finished download can also be
 // saved as a link (tag "descarga") so read_link and search find its caption.
 //
+// This module is the OWNER of the family's media service (Hoard Link services.md): media_download
+// (sections, max_duration_s, max_height, dest_dir), media_info, media_subtitles and media_audio_for_asr
+// are served to the other apps through the hub. Finding the tools, running them, the yt-dlp arguments,
+// the progress parser, the failure classifier, the queue, the URL check and the subtitle parsers are
+// the shared ones in ./hoard-commons/media.js; what stays here is Links' own: the table, the queue
+// wiring, the settings, the link saving and the events.
+//
 // Restart policy: rows left in "downloading"/"processing" when the app was
 // closed become "failed" (interrumpida al cerrar la app); rows still "queued"
 // never started, so they are put back in the queue on the next boot.
@@ -17,6 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { db, uid, now, getSetting, setSetting, isOpen } from "./db.js";
 import * as links from "./links.js";
@@ -24,294 +32,90 @@ import { enqueueFetch, waitForFetch } from "./fetcher.js";
 import { excerptOf, wordCount } from "./extract.js";
 import * as family from "./hoard-link.js";
 import { appLink } from "./public-url.js";
-import { MediaQueue } from "./media-queue.js";
+import { allowPrivateUrls } from "./net-policy.js";
+import { evaluateUrl } from "./hoard-commons/web.js";
 import {
-  MediaError, INSTALL_COMMAND, installHint, resolveTool, runProcess, runCapture, toolsStatus, updateTools, resetToolsCache,
-} from "./media-tools.js";
+  MediaError, setLanguage, INSTALL_COMMAND, installHint, resolveTool as resolveSharedTool, runProcess, runCapture,
+  toolsStatus as toolsStatusShared, updateTools as updateToolsShared, resetToolsCache,
+  detectPlatform as detectPlatformShared, PLATFORM_NAMES, FORMATS, QUALITIES, STATUSES, ACTIVE_STATUSES, COOKIE_BROWSERS, DEFAULT_MAX_ITEMS,
+  fileKind, mimeOf, PARTIAL, cookieAttempts, buildYtdlpArgs, buildGalleryArgs, buildProbeArgs, parseYtdlpLine, ProgressTracker,
+  explainFailure, etaSeconds, ytdlpAgeDays, parseCodecs, needsTranscode, normalizeMediaUrl as normalizePublicMediaUrl,
+  MediaQueue, subtitleCues, cuesToText, ytdlpBaseArgs, cookieArgs,
+} from "./hoard-commons/media.js";
 
-export { toolsStatus, updateTools, resetToolsCache };
+// Links speaks Spanish to its user: the commons' messages come out in Spanish.
+setLanguage("es");
+
+export {
+  resetToolsCache, PLATFORM_NAMES, FORMATS, QUALITIES, STATUSES, ACTIVE_STATUSES, COOKIE_BROWSERS, DEFAULT_MAX_ITEMS,
+  fileKind, mimeOf, etaSeconds, ytdlpAgeDays,
+};
 
 // ---------------------------------------------------------------------------
-// platforms
+// tools: the shared lookup, plus the sibling app's bin folder as one more candidate
 // ---------------------------------------------------------------------------
 
-const PLATFORMS = [
-  ["YouTube", ["youtube.com", "youtu.be", "youtube-nocookie.com"]],
-  ["X (Twitter)", ["twitter.com", "x.com", "t.co", "fxtwitter.com", "vxtwitter.com", "fixupx.com"]],
-  ["Instagram", ["instagram.com", "instagr.am"]],
-  ["TikTok", ["tiktok.com"]],
-  ["Audiomack", ["audiomack.com"]],
-  ["SoundCloud", ["soundcloud.com", "snd.sc"]],
-  ["Vimeo", ["vimeo.com"]],
-  ["Twitch", ["twitch.tv"]],
-  ["Reddit", ["reddit.com", "redd.it"]],
-  ["Facebook", ["facebook.com", "fb.watch", "fb.com"]],
-  ["Bilibili", ["bilibili.com", "b23.tv"]],
-  ["Dailymotion", ["dailymotion.com", "dai.ly"]],
-  ["Bandcamp", ["bandcamp.com"]],
-  ["Pinterest", ["pinterest.com", "pin.it"]],
-  ["Threads", ["threads.net"]],
-];
+const SIBLING_NAME = "Writers hoard desktop";
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/** The Writers app's binaries folder (checked after $HOARD_HOME/bin and before PATH); LINKS_MEDIA_SIBLING_DIR overrides it, "0" or "off" turns it off. */
+export function defaultSiblingDir(env = process.env) {
+  const override = env.LINKS_MEDIA_SIBLING_DIR;
+  if (override !== undefined && override !== "") {
+    if (/^(0|off|no|false)$/i.test(override.trim())) return null;
+    return path.resolve(override);
+  }
+  return path.resolve(ROOT, "..", SIBLING_NAME, "resources", "bin");
+}
+
+/** The shared resolveTool (HOARD_<NAME> / LINKS_<NAME> variables, $HOARD_HOME/bin, PATH, python module...) with the sibling folder as a candidate. */
+export const resolveTool = (tool, options = {}) => resolveSharedTool(tool, { siblingDir: defaultSiblingDir(options.env || process.env), ...options });
+const MEDIA_TOOLS = ["ytdlp", "gallerydl", "ffmpeg"];
+/** What was found, for GET /api/media/tools and media_tools. */
+export const toolsStatus = (options = {}) => toolsStatusShared({ tools: MEDIA_TOOLS, siblingDir: defaultSiblingDir(options.env || process.env), ...options });
+export const updateTools = (options = {}) => updateToolsShared({ siblingDir: defaultSiblingDir(options.env || process.env), ...options });
+
+// ---------------------------------------------------------------------------
+// platforms and URLs
+// ---------------------------------------------------------------------------
+
+// The label stored in old rows stays "Otro (yt-dlp)" (the commons' own is English).
 export const OTHER_PLATFORM = "Otro (yt-dlp)";
-export const PLATFORM_NAMES = PLATFORMS.map(([name]) => name);
 
 /** Label for the site a URL belongs to; unknown sites are still attempted by yt-dlp. */
-export function detectPlatform(url) {
-  let host = "";
-  try { host = new URL(/^[a-z][a-z0-9+.-]*:/i.test(String(url).trim()) ? String(url).trim() : `https://${String(url).trim()}`).hostname.toLowerCase(); } catch { return OTHER_PLATFORM; }
-  for (const [label, domains] of PLATFORMS) {
-    if (domains.some((d) => host === d || host.endsWith(`.${d}`))) return label;
-  }
-  return OTHER_PLATFORM;
-}
-
+export const detectPlatform = (url) => detectPlatformShared(url, { other: OTHER_PLATFORM });
 export const isKnownPlatform = (url) => detectPlatform(url) !== OTHER_PLATFORM;
 
-// ---------------------------------------------------------------------------
-// formats, quality, arguments
-// ---------------------------------------------------------------------------
-
-export const FORMATS = ["auto", "video", "audio", "image"];
-export const QUALITIES = ["best", "2160", "1440", "1080", "720", "480", "360"];
-export const STATUSES = ["queued", "downloading", "processing", "done", "failed", "cancelled"];
-export const ACTIVE_STATUSES = ["queued", "downloading", "processing"];
-export const COOKIE_BROWSERS = ["firefox", "chrome", "edge", "brave", "chromium", "vivaldi", "opera"];
-export const OUTPUT_TEMPLATE = "%(title).120s [%(id)s].%(ext)s";
-export const DEFAULT_MAX_ITEMS = 50;
-
-const VIDEO_EXT = new Set([".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".ts"]);
-const AUDIO_EXT = new Set([".mp3", ".m4a", ".opus", ".ogg", ".oga", ".flac", ".wav", ".aac", ".wma"]);
-const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".avif", ".bmp", ".tiff"]);
-const PARTIAL = /(?:\.part(?:-Frag\d+)?|\.ytdl|\.temp(?:\.\w+)?|\.f(?:\d+|hls|dash|http)[\w-]*(?:\.\w+)?(?:\.part)?|\.lh-h264\.mp4)$/i;
-
-export function fileKind(name) {
-  const ext = path.extname(String(name)).toLowerCase();
-  if (VIDEO_EXT.has(ext)) return "video";
-  if (AUDIO_EXT.has(ext)) return "audio";
-  if (IMAGE_EXT.has(ext)) return "image";
-  return "other";
-}
-
-/** yt-dlp -f expression: H.264 + AAC first (plays everywhere), then anything. */
-export function videoSelector(quality = "best", hasFfmpeg = true) {
-  const h = /^\d+$/.test(String(quality)) ? `[height<=${quality}]` : "";
-  if (!hasFfmpeg) return `b[ext=mp4]${h}/b${h}/b`;
-  return [`bv*[vcodec^=avc1]${h}+ba[ext=m4a]`, `b[ext=mp4]${h}`, `bv*${h}+ba`, `b${h}`, "b"].join("/");
-}
-
-/** One cookie attempt as yt-dlp arguments. */
-export function cookieArgs(attempt) {
-  if (!attempt || attempt.type === "none") return [];
-  if (attempt.type === "file") return ["--cookies", attempt.path];
-  return ["--cookies-from-browser", attempt.name];
-}
-
-/** The ordered cookie attempts for a request ("auto" | "none" | a browser name) and an optional cookies file. */
-export function cookieAttempts(request = "auto", { cookiesFile = "", browsers = COOKIE_BROWSERS } = {}) {
-  const r = String(request || "auto").trim().toLowerCase();
-  if (r === "none") return [{ type: "none" }];
-  if (r && r !== "auto") return [{ type: "browser", name: r }];
-  if (cookiesFile) return [{ type: "file", path: cookiesFile }];
-  return [{ type: "none" }, ...browsers.map((name) => ({ type: "browser", name }))];
-}
-
-export function buildYtdlpArgs({ url, format = "video", quality = "best", dir, playlist = false, maxItems = DEFAULT_MAX_ITEMS, cookie = null, hasFfmpeg = true, ffmpegPath = null, extra = [] }) {
-  const args = [
-    "--newline", "--no-colors", "--no-warnings", "--progress", "--windows-filenames", "--no-mtime",
-    "--retries", "10", "--fragment-retries", "10", "--concurrent-fragments", "4",
-    ...(playlist ? ["--yes-playlist", "--playlist-end", String(maxItems)] : ["--no-playlist"]),
-    "-P", dir, "-o", OUTPUT_TEMPLATE,
-  ];
-  if (ffmpegPath) args.push("--ffmpeg-location", ffmpegPath);
-  if (format === "audio") {
-    args.push("-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "0", "--embed-metadata");
-  } else {
-    args.push("-f", videoSelector(quality, hasFfmpeg));
-    if (hasFfmpeg) args.push("--merge-output-format", "mp4");
-  }
-  args.push(...cookieArgs(cookie));
-  args.push(
-    "--progress-template", "download:LHP|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.status)s",
-    "--progress-template", "postprocess:LHPP|%(progress.postprocessor)s|%(progress.status)s",
-    "--print", "before_dl:LHSEL|%(format_id)s|%(playlist_index)s|%(n_entries)s|%(filename)s",
-    "--print", "after_move:LHMETA|%(.{id,title,uploader,channel,upload_date,description,duration,playlist_title,filepath})j",
-    ...extra,
-    "--", url,
-  );
-  return args;
-}
-
-export function buildGalleryArgs({ url, dir, cookie = null, maxItems = DEFAULT_MAX_ITEMS }) {
-  return [...cookieArgs(cookie), "--write-metadata", "--no-mtime", "--range", `1-${maxItems}`, "-D", dir, "--", url];
-}
-
-export function buildProbeArgs({ url, playlist = false, cookie = null }) {
-  return ["--dump-single-json", "--no-warnings", "--skip-download", ...(playlist ? ["--flat-playlist"] : ["--no-playlist"]), ...cookieArgs(cookie), "--", url];
-}
-
-// ---------------------------------------------------------------------------
-// reading yt-dlp output
-// ---------------------------------------------------------------------------
-
-const num = (v) => { const n = Number(v); return v === undefined || v === "NA" || v === "" || !Number.isFinite(n) ? null : n; };
-
-/** One stdout line of yt-dlp as an event, or null for lines we ignore. */
-export function parseYtdlpLine(line) {
-  const text = String(line);
-  if (text.startsWith("LHP|")) {
-    const p = text.split("|");
-    return { type: "progress", downloaded: num(p[1]), total: num(p[2]), estimate: num(p[3]), speed: num(p[4]), eta: num(p[5]), status: p[6] || "downloading" };
-  }
-  if (text.startsWith("LHPP|")) {
-    const p = text.split("|");
-    return { type: "pp", name: p[1] || "", status: p[2] || "" };
-  }
-  if (text.startsWith("LHSEL|")) {
-    const p = text.split("|");
-    return { type: "sel", formatId: p[1] || "", index: num(p[2]), count: num(p[3]), filename: p.slice(4).join("|") };
-  }
-  if (text.startsWith("LHMETA|")) {
-    try { return { type: "meta", data: JSON.parse(text.slice(7)) }; } catch { return null; }
-  }
-  const already = text.match(/^\[download\]\s+(.+?)\s+has already been downloaded/);
-  if (already) return { type: "already", path: already[1] };
-  return null;
-}
-
-export function formatSpeed(bytesPerSecond) {
-  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return "";
-  const units = ["B/s", "KB/s", "MB/s", "GB/s"];
-  let v = bytesPerSecond;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
-}
-
-export function formatEta(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "";
-  const s = Math.round(seconds);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const pad = (n) => String(n).padStart(2, "0");
-  return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${pad(m)}:${pad(s % 60)}`;
-}
-
-const PP_TEXT = {
-  Merger: "Uniendo audio y vídeo…", FFmpegMerger: "Uniendo audio y vídeo…",
-  ExtractAudio: "Extrayendo el audio (MP3)…", FFmpegExtractAudio: "Extrayendo el audio (MP3)…",
-  Metadata: "Escribiendo metadatos…", FFmpegMetadata: "Escribiendo metadatos…",
-  VideoRemuxer: "Reempaquetando el vídeo…", FFmpegVideoRemuxer: "Reempaquetando el vídeo…",
-  MoveFiles: "Guardando el archivo…",
-};
-
 /**
- * Turns the progress events of one yt-dlp run into the numbers the UI shows.
- * A merged download has two streams (video + audio), a playlist has several
- * items; both are folded into a single 0–99 % bar (100 is set when done).
+ * A clean http(s) URL for a download, or a MediaError. Refused (shared rule, no DNS): other schemes, hosts without a dot, localhost,
+ * *.local / *.internal and IP literals of this machine or a private network. LINKS_ALLOW_PRIVATE_URLS=1 lifts the address rule for a
+ * server on the user's own network (the scheme and host-shape rules stay).
  */
-export class ProgressTracker {
-  constructor() {
-    this.streams = 1;
-    this.finished = 0;
-    this.item = 1;
-    this.items = 1;
-    this.processing = false;
-    this.last = 0;
-    this.label = "Descargando…";
+export function normalizeMediaUrl(input) {
+  if (!allowPrivateUrls()) return normalizePublicMediaUrl(input);
+  let text = String(input ?? "").trim();
+  if (!text) throw new MediaError("Falta la URL.");
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = `https://${text}`;
+  let parsed;
+  try { parsed = new URL(text); } catch { throw new MediaError(`«${input}» no es una URL válida.`); }
+  const host = parsed.hostname.toLowerCase();
+  if (!/^https?:$/.test(parsed.protocol) || !host || !(host.includes(".") || host.startsWith("[") || host === "localhost")) {
+    throw new MediaError(`«${input}» no es una URL http(s) válida.`);
   }
-
-  /** before_dl event: a new item (playlist entry) starts, with its stream count. */
-  select(ev) {
-    this.streams = Math.max(1, String(ev.formatId || "").split("+").length);
-    this.finished = 0;
-    this.item = ev.index || 1;
-    this.items = ev.count || 1;
-    this.processing = false;
-    this.label = this.items > 1 ? `Elemento ${this.item} de ${this.items}…` : "Descargando…";
-  }
-
-  /** Returns the patch to store, or null when nothing changes. */
-  update(ev) {
-    if (ev.type === "progress") {
-      const total = ev.total || ev.estimate || 0;
-      const pct = total > 0 ? Math.min(1, (ev.downloaded || 0) / total) : 0;
-      const within = ev.status === "finished" ? 1 : pct;
-      if (ev.status === "finished") this.finished += 1;
-      const stream = Math.min(this.streams, ev.status === "finished" ? this.finished : this.finished + within);
-      const overall = ((this.item - 1) + stream / this.streams) / this.items;
-      this.last = Math.max(this.last, Math.min(99, Math.round(overall * 1000) / 10));
-      return { progress: this.last, speed: formatSpeed(ev.speed), eta: formatEta(ev.eta), detail: this.processing ? undefined : this.label };
-    }
-    if (ev.type === "pp" && ev.status === "started") {
-      this.processing = true;
-      return { status: "processing", detail: PP_TEXT[ev.name] || "Procesando…", speed: "", eta: "" };
-    }
-    return null;
-  }
+  return parsed.toString();
 }
 
-// ---------------------------------------------------------------------------
-// errors in plain Spanish
-// ---------------------------------------------------------------------------
-
-const RX = {
-  noVideo: /there is no video in this post|no video could be found|no video formats? found|does not contain (?:a )?video|no video in this (?:post|tweet)/i,
-  unsupported: /unsupported url|no suitable extractor|no extractor found/i,
-  ffmpeg: /ffmpeg.*(?:not found|not installed|could not be found)|ffprobe and ffmpeg not found|requires ffmpeg|ffmpeg is required|ffmpeg or avconv/i,
-  auth: /login required|log ?in|sign ?in|logged in|cookies|authenticat|private (?:video|account|post|tweet)|not a bot|rate[- ]limit|empty media response|restricted video|age[- ]restricted|confirm your age|members[- ]only|requires? (?:an )?account|nsfw|protected tweet|tweet is protected|\b40[13]\b|forbidden|autherror|authrequired/i,
-  unavailable: /video unavailable|this video is (?:not available|unavailable|private)|has been removed|no longer available|been deleted|does not exist|http error 404|not found|geo[- ]restrict|not available in your country|NotFound/i,
-  outdated: /no such option|unrecognized arguments|invalid (?:output )?template|unknown (?:output )?template|unsupported field|nsig extraction failed|unable to extract (?:uploader|video data|\w+ (?:data|info|player))/i,
-  // YouTube and others answer 403 to an old yt-dlp's media requests: an update fixes it far more often than cookies
-  blocked: /unable to download video data:? http error 403|requested format is not available|sabr|po token|signature (?:extraction|decipher)/i,
-  network: /getaddrinfo|temporary failure in name|timed out|timeout|connection (?:reset|refused|aborted)|network is unreachable|unable to download (?:webpage|json)|ssl|certificate/i,
-};
-
-const lastLines = (text, n = 1) => String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-n);
-const errorLine = (text) => {
-  const lines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const marked = lines.filter((l) => /\bERROR\b|\[error\]/i.test(l));
-  return (marked.at(-1) || lines.at(-1) || "").replace(/^ERROR:\s*/i, "").slice(0, 240);
-};
-
-/** Classify the stderr of a failed run and build a MediaError with a message the user can act on. */
-export function explainFailure(tool, stderr, { code = null } = {}) {
-  const raw = String(stderr || "");
-  const line = errorLine(raw);
-  const flags = {};
-  let message;
-  let status = 400;
-  if (RX.ffmpeg.test(raw)) {
-    message = `Falta ffmpeg, necesario para unir o convertir audio y vídeo. ${installHint("ffmpeg")}`;
-    flags.fatal = true;
-    flags.code = "NO_FFMPEG";
-  } else if (RX.noVideo.test(raw)) {
-    message = "La publicación no contiene vídeo (es una foto o un carrusel).";
-    flags.noVideo = true;
-  } else if (RX.unsupported.test(raw)) {
-    message = "Esta dirección no es compatible (URL no admitida). Comprueba que el enlace lleva a un vídeo, un audio o una publicación concreta.";
-    flags.unsupported = true;
-  } else if (tool === "yt-dlp" && RX.blocked.test(raw) && !/sign in|log ?in|private|age[- ]restricted|members[- ]only|not a bot/i.test(raw)) {
-    message = "La plataforma rechazó la descarga (403). Suele deberse a un yt-dlp desactualizado: actualízalo (Descargas → Herramientas → Actualizar) o, si el vídeo es privado o con restricción de edad, inicia sesión en Firefox o Chrome.";
-    flags.authLike = true;
-    flags.outdatedLike = true;
-  } else if (RX.auth.test(raw) || (tool === "gallery-dl" && code && (code & 16))) {
-    message = "Este contenido necesita iniciar sesión (cuenta privada, restricción de edad o límite de la plataforma). Inicia sesión en Firefox o Chrome y vuelve a intentarlo, o indica un archivo de cookies en Ajustes. Si sigue fallando, actualiza yt-dlp (Descargas → Herramientas → Actualizar).";
-    flags.authLike = true;
-  } else if (RX.outdated.test(raw)) {
-    flags.outdatedLike = true;
-    message = "Es probable que yt-dlp esté desactualizado (las plataformas cambian a menudo). Actualízalo desde Descargas → Herramientas → Actualizar, o con: python -m pip install -U yt-dlp.";
-  } else if (RX.unavailable.test(raw)) {
-    message = "El contenido no está disponible: es privado, se ha borrado o está bloqueado en tu país.";
-  } else if (RX.network.test(raw)) {
-    message = "No se pudo conectar con el sitio. Comprueba tu conexión e inténtalo de nuevo.";
-    status = 502;
-  } else {
-    message = `${tool} falló${line ? `: ${line}` : code != null ? ` (código ${code})` : ""}.`;
-    return Object.assign(new MediaError(message, { status, detail: line }), flags);
-  }
-  if (line && !flags.noVideo) message += ` Detalle: ${line}`;
-  return Object.assign(new MediaError(message, { status, detail: line, code: flags.code || "MEDIA" }), flags);
+/** The part of the SSRF guard that needs DNS: a public-looking name that resolves to a private address. An unresolvable name passes (yt-dlp reports it). */
+async function refusePrivateResolution(url) {
+  if (allowPrivateUrls()) return;
+  let reason = null;
+  try {
+    const verdict = await evaluateUrl(url, {});
+    reason = verdict.kind === "policy" ? verdict.reason : null;
+  } catch { reason = null; }
+  if (reason) throw new MediaError(`«${url}» apunta a este equipo o a una red privada (${reason}); solo se pueden descargar páginas públicas.`);
 }
+
 
 const missingTool = (tool) => new MediaError(
   `No se encontró ${tool === "ytdlp" ? "yt-dlp" : tool === "gallerydl" ? "gallery-dl" : "ffmpeg"}. ${tool === "ffmpeg" ? installHint("ffmpeg") : `Instálalo con: ${INSTALL_COMMAND}`}`,
@@ -406,7 +210,7 @@ function uniquePath(target) {
 
 const COLUMNS = new Set(["url", "platform", "format", "quality", "kind", "status", "progress", "speed", "eta", "detail", "title", "uploader",
   "upload_date", "description", "duration", "dir", "files", "total_bytes", "save_link", "playlist", "max_items", "link_id", "error",
-  "cookies_request", "cookies_browser", "started_at", "finished_at"]);
+  "cookies_request", "cookies_browser", "started_at", "finished_at", "sections", "max_duration_s", "max_height", "asr"]);
 
 const live = new Map(); // id -> patch not yet written (throttled mirror of progress)
 const lastWrite = new Map();
@@ -448,7 +252,9 @@ function parseRow(r) {
   if (!r) return null;
   let files = [];
   try { files = JSON.parse(r.files || "[]"); } catch { files = []; }
-  return { ...r, files, save_link: !!r.save_link, playlist: !!r.playlist };
+  let sections = [];
+  try { sections = r.sections ? JSON.parse(r.sections) : []; } catch { sections = []; }
+  return { ...r, files, sections, save_link: !!r.save_link, playlist: !!r.playlist, asr: !!r.asr };
 }
 
 function getRow(id) {
@@ -467,6 +273,7 @@ export function present(row) {
     title: row.title, uploader: row.uploader, upload_date: row.upload_date, description: row.description, duration: row.duration,
     dir: row.dir, files: row.files, total_bytes: row.total_bytes, save_link: row.save_link, playlist: row.playlist, max_items: row.max_items,
     link_id: row.link_id, error: row.error, cookies_browser: row.cookies_browser,
+    sections: row.sections, max_duration_s: row.max_duration_s ?? null, max_height: row.max_height ?? null, asr: row.asr,
     created_at: row.created_at, started_at: row.started_at, finished_at: row.finished_at,
   };
 }
@@ -556,12 +363,6 @@ export function initMedia() {
 const PROGRESS_EVERY_MS = 3000;
 const lastProgress = new Map(); // id -> { at, progress }
 
-/** "mm:ss" or "h:mm:ss" (what the UI shows) back to seconds; null when there is none. */
-export function etaSeconds(text) {
-  const m = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/.exec(String(text || "").trim());
-  return m ? Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
-}
-
 function jobEvent(name, row, extra = {}) {
   if (!row) return;
   const progress = name === "done" ? 1 : Math.max(0, Math.min(1, (Number(row.progress) || 0) / 100));
@@ -590,45 +391,50 @@ function jobProgress(id) {
 // start, cancel, retry, remove
 // ---------------------------------------------------------------------------
 
+const sectionPair = z.tuple([z.number().min(0), z.number().positive()]).refine(([s, e]) => e > s, "Cada sección necesita 0 <= inicio < fin (segundos).");
+
 const startInput = z.object({
   url: z.string().trim().min(1, "Falta la URL.").max(4000),
   format: z.enum(FORMATS).default("auto"),
   quality: z.preprocess((v) => (v === undefined || v === null || v === "" ? "best" : String(v)), z.enum(QUALITIES)).default("best"),
   dir: z.string().trim().max(1000).optional(),
+  // alias of dir: the family clients send both
+  dest_dir: z.string().trim().max(1000).optional(),
   save_link: z.boolean().default(true),
   playlist: z.boolean().default(false),
   max_items: z.number().int().min(1).max(500).default(DEFAULT_MAX_ITEMS),
   cookies_browser: z.string().trim().toLowerCase().regex(/^(?:auto|none|[a-z]+(?::\S+)?)$/, "Navegador no válido (firefox, chrome, edge, brave… o auto/none).").default("auto"),
+  // the family service (services.md section 2)
+  sections: z.array(sectionPair).max(10, "Como mucho 10 secciones.").optional(),
+  max_duration_s: z.number().positive().max(7 * 24 * 3600).optional(),
+  max_height: z.number().int().min(144).max(4320).optional(),
+  asr: z.boolean().default(false),
 });
-
-export function normalizeMediaUrl(input) {
-  let text = String(input || "").trim();
-  if (!text) throw new MediaError("Falta la URL.");
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = `https://${text}`;
-  let parsed;
-  try { parsed = new URL(text); } catch { throw new MediaError(`«${input}» no es una URL válida.`); }
-  const plainHost = parsed.hostname.includes(".") || parsed.hostname === "localhost" || /^\[/.test(parsed.hostname);
-  if (!/^https?:$/.test(parsed.protocol) || !plainHost) {
-    throw new MediaError(`«${input}» no es una URL http(s) válida.`);
-  }
-  return parsed.toString();
-}
 
 /** Queue a download. Returns the row; with `existing: true` when the same download is already in progress. */
 export function startDownload(input = {}) {
   const data = startInput.parse(input);
   const url = normalizeMediaUrl(data.url);
-  const dir = resolveMediaDir(data.dir);
+  const asr = data.asr;
+  const wanted = data.dest_dir || data.dir;
+  // speech-to-text audio goes to its own folder, away from what the person keeps
+  const dir = asr && !wanted ? path.join(resolveMediaDir(), "asr") : resolveMediaDir(wanted);
+  const format = asr ? "audio" : data.format;
+  const sections = data.sections?.length ? JSON.stringify(data.sections) : "";
+  const saveLink = asr ? false : data.save_link;
   const duplicate = db().prepare(
-    `SELECT id FROM media_downloads WHERE url = ? AND format = ? AND quality = ? AND dir = ? AND status IN ('queued','downloading','processing') LIMIT 1`,
-  ).get(url, data.format, data.quality, dir);
+    `SELECT id FROM media_downloads WHERE url = ? AND format = ? AND quality = ? AND dir = ? AND sections = ? AND asr = ? AND COALESCE(max_height, 0) = ?
+     AND status IN ('queued','downloading','processing') LIMIT 1`,
+  ).get(url, format, data.quality, dir, sections, asr ? 1 : 0, data.max_height || 0);
   if (duplicate) return { ...getDownload(duplicate.id), existing: true };
   ensureDir(dir);
   const id = uid();
   db().prepare(
-    `INSERT INTO media_downloads (id, url, platform, format, quality, status, dir, save_link, playlist, max_items, cookies_request, created_at)
-     VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`,
-  ).run(id, url, detectPlatform(url), data.format, data.quality, dir, data.save_link ? 1 : 0, data.playlist ? 1 : 0, data.max_items, data.cookies_browser, now());
+    `INSERT INTO media_downloads (id, url, platform, format, quality, status, dir, save_link, playlist, max_items, cookies_request, created_at,
+       sections, max_duration_s, max_height, asr)
+     VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, url, detectPlatform(url), format, data.quality, dir, saveLink ? 1 : 0, data.playlist ? 1 : 0, data.max_items, data.cookies_browser, now(),
+    sections, data.max_duration_s ?? null, data.max_height ?? null, asr ? 1 : 0);
   queue.enqueue(id, (signal) => runDownload(id, signal));
   jobEvent("queued", getRow(id));
   return { ...getDownload(id), existing: false };
@@ -688,12 +494,6 @@ export function removeDownload(id, { deleteFiles = false } = {}) {
 // files and "show in folder"
 // ---------------------------------------------------------------------------
 
-const MIME = {
-  ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mkv": "video/x-matroska", ".mov": "video/quicktime",
-  ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".wav": "audio/wav", ".flac": "audio/flac", ".aac": "audio/aac",
-  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif", ".avif": "image/avif",
-};
-export const mimeOf = (file) => MIME[path.extname(file).toLowerCase()] || "application/octet-stream";
 
 /** The i-th produced file of a download, checked on disk. */
 export function fileOf(id, index = 0) {
@@ -791,54 +591,121 @@ function removePartials(dir, stems) {
   }
 }
 
+/** The quality yt-dlp is asked for: the lower of the requested one and max_height. */
+export function effectiveQuality(quality, maxHeight) {
+  const cap = Number(maxHeight) || 0;
+  if (!cap) return quality || "best";
+  if (!quality || quality === "best" || !/^\d+$/.test(String(quality))) return String(cap);
+  return String(Math.min(Number(quality), cap));
+}
+
+/** "2 h 10 min", "20 min", "45 s". */
+export function durationLabel(seconds) {
+  const s = Math.round(Number(seconds) || 0);
+  if (s < 60) return `${s} s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h) return m ? `${h} h ${m} min` : `${h} h`;
+  return `${m} min`;
+}
+
+const sectionLabel = ([start, end]) => `${Math.round(start * 1000) / 1000}-${Math.round(end * 1000) / 1000}`;
+
+/** What `-o` and the extra arguments of one run say: no sections, one section (named after its range) or several ([part N]). */
+function sectionRuns(sections) {
+  if (!sections?.length) return [{ extra: [] }];
+  return sections.map((section, i) => ({
+    section,
+    extra: [
+      "--download-sections", `*${section[0]}-${section[1]}`, "--force-keyframes-at-cuts",
+      "-o", `%(title).120s [%(id)s] [${sections.length > 1 ? `part ${i + 1}` : sectionLabel(section)}].%(ext)s`,
+    ],
+  }));
+}
+
+/** yt-dlp options common to the probes: the shared base (--ignore-config, JS runtime) for the build found. */
+const probeArgs = (ytdlp, url, cookie, playlist = false) => buildProbeArgs({ url, playlist, cookie, ytdlpVersion: ytdlp.version });
+
+/**
+ * yt-dlp --dump-single-json for one cookie attempt, parsed. The whole line is collected here: runProcess keeps only the last 64 KB of
+ * output and the JSON of a long video (every format of every stream) is larger than that.
+ */
+async function ytdlpJson(ytdlp, url, cookie, { playlist = false, signal } = {}) {
+  let text = "";
+  const r = await runProcess(ytdlp.command, probeArgs(ytdlp, url, cookie, playlist), { signal, timeoutMs: 90_000, onStdoutLine: (line) => { text += line; } });
+  if (r.code !== 0) throw explainFailure("yt-dlp", r.stderr, { code: r.code });
+  try { return JSON.parse(text); } catch { throw new MediaError("yt-dlp no devolvió información legible sobre este enlace."); }
+}
+
+/** Refuse a video longer than the limit before downloading anything. */
+async function checkDuration(row, ctx, cookie) {
+  const limit = Number(row.max_duration_s) || 0;
+  if (!limit || row.playlist) return;
+  const info = await ytdlpJson(ctx.tools.ytdlp, row.url, cookie, { signal: ctx.signal });
+  const duration = Number(info?.duration) || 0;
+  if (duration && duration > limit) {
+    throw Object.assign(new MediaError(`El vídeo dura ${durationLabel(duration)} (límite ${durationLabel(limit)}).`, { code: "TOO_LONG", status: 413 }), { fatal: true });
+  }
+}
+
 async function ytdlpOnce(row, ctx, cookie) {
   const { ytdlp, ffmpeg } = ctx.tools;
   if (!ytdlp.found) throw missingTool("ytdlp");
   if (row.format === "audio" && !ffmpeg.found) {
     throw Object.assign(new MediaError(`Falta ffmpeg para extraer el audio en MP3. ${installHint("ffmpeg")}`, { code: "NO_FFMPEG", status: 424 }), { fatal: true });
   }
-  const args = buildYtdlpArgs({
-    url: row.url, format: row.format === "audio" ? "audio" : "video", quality: row.quality, dir: row.dir,
-    playlist: row.playlist, maxItems: row.max_items, cookie, hasFfmpeg: ffmpeg.found,
-    ffmpegPath: ffmpeg.found && !ffmpeg.command.args.length ? ffmpeg.command.cmd : null,
-  });
-  const tracker = new ProgressTracker();
+  await checkDuration(row, ctx, cookie);
+  const runs = sectionRuns(row.sections);
   const produced = [];
   const metas = [];
+  let partial = "";
   const startedMs = Date.now();
-  const result = await runProcess(ytdlp.command, args, {
-    signal: ctx.signal,
-    onStdoutLine: (line) => {
-      const ev = parseYtdlpLine(line);
-      if (!ev) return;
-      if (ev.type === "sel") {
-        const wasProcessing = tracker.processing;
-        tracker.select(ev);
-        if (wasProcessing) patchRow(row.id, { status: "downloading", detail: tracker.label });
-        else if (ev.count > 1) trickle(row.id, { detail: tracker.label });
-        if (ev.filename) ctx.partials.add(path.basename(ev.filename).replace(/\.[^.]+$/, ""));
-        return;
-      }
-      if (ev.type === "meta") { metas.push(ev.data); if (ev.data.filepath) produced.push(ev.data.filepath); return; }
-      if (ev.type === "already") { produced.push(ev.path); return; }
-      const patch = tracker.update(ev);
-      if (!patch) return;
-      if (patch.status) patchRow(row.id, patch); else trickle(row.id, patch);
-    },
-  });
-  const files = [...new Set(produced)].filter((p) => fs.existsSync(p));
-  if (result.code !== 0) {
-    if (files.length && row.playlist) {
-      return { files, metas, partial: "Algunos elementos de la lista fallaron y se omitieron." };
+  for (let index = 0; index < runs.length; index++) {
+    const run = runs[index];
+    const args = buildYtdlpArgs({
+      url: row.url, format: row.format === "audio" ? "audio" : "video", quality: effectiveQuality(row.quality, row.max_height), dir: row.dir,
+      playlist: row.playlist, maxItems: row.max_items, cookie, hasFfmpeg: ffmpeg.found,
+      ffmpegPath: ffmpeg.found && !ffmpeg.command.args.length ? ffmpeg.command.cmd : null,
+      ytdlpVersion: ytdlp.version, extra: run.extra,
+    });
+    const tracker = new ProgressTracker();
+    const scale = (patch) => (runs.length > 1 && patch.progress !== undefined ? { ...patch, progress: Math.min(99, (index * 100 + patch.progress) / runs.length) } : patch);
+    const before = produced.length;
+    const result = await runProcess(ytdlp.command, args, {
+      signal: ctx.signal,
+      onStdoutLine: (line) => {
+        const ev = parseYtdlpLine(line);
+        if (!ev) return;
+        if (ev.type === "sel") {
+          const wasProcessing = tracker.processing;
+          tracker.select(ev);
+          const label = runs.length > 1 ? `Parte ${index + 1} de ${runs.length}. ${tracker.label}` : tracker.label;
+          if (wasProcessing) patchRow(row.id, { status: "downloading", detail: label });
+          else if (ev.count > 1 || runs.length > 1) trickle(row.id, { detail: label });
+          if (ev.filename) ctx.partials.add(path.basename(ev.filename).replace(/\.[^.]+$/, ""));
+          return;
+        }
+        if (ev.type === "meta") { metas.push(ev.data); if (ev.data.filepath) produced.push(ev.data.filepath); return; }
+        if (ev.type === "already") { produced.push(ev.path); return; }
+        const patch = tracker.update(ev);
+        if (!patch) return;
+        const out = scale(patch);
+        if (out.status) patchRow(row.id, out); else trickle(row.id, out);
+      },
+    });
+    const made = [...new Set(produced.slice(before))].filter((p) => fs.existsSync(p));
+    if (result.code !== 0) {
+      if (made.length && row.playlist) { partial = "Algunos elementos de la lista fallaron y se omitieron."; continue; }
+      throw explainFailure("yt-dlp", result.stderr, { code: result.code });
     }
-    throw explainFailure("yt-dlp", result.stderr, { code: result.code });
   }
+  const files = [...new Set(produced)].filter((p) => fs.existsSync(p));
   if (!files.length) {
     const scanned = newFilesSince(row.dir, startedMs);
     if (!scanned.length) throw new MediaError("yt-dlp terminó pero no creó ningún archivo. Prueba de nuevo o actualiza yt-dlp desde la sección Herramientas.");
     files.push(...scanned);
   }
-  return { files, metas };
+  return { files, metas, partial };
 }
 
 function pickMeta(metas, playlist) {
@@ -856,30 +723,34 @@ function pickMeta(metas, playlist) {
 async function viaYtdlp(row, ctx) {
   const { value, attempt } = await withCookieAttempts(row.cookies_request, (cookie) => ytdlpOnce(row, ctx, cookie));
   let files = value.files.map(fileRecord);
-  if (row.format !== "audio") files = await ensurePlayable(files, row, ctx);
+  if (row.asr) files = await toAsrWav(files, row, ctx);
+  else if (row.format !== "audio") files = await ensurePlayable(files, row, ctx);
   const kind = row.format === "audio" || files.every((f) => f.kind === "audio") ? "audio" : files.every((f) => f.kind === "image") ? "image" : "video";
   return { files, meta: pickMeta(value.metas, row.playlist), kind, cookie: attempt, note: value.partial || "" };
 }
 
-// -- H.264 / AAC so the file plays everywhere ------------------------------
+// -- audio for speech to text: mono 16 kHz PCM WAV ---------------------------
 
-export function parseCodecs(stderr) {
-  const text = String(stderr || "");
-  let video = null;
-  for (const m of text.matchAll(/Stream #\d+:\d+[^\n]*?: Video: ([A-Za-z0-9_]+)([^\n]*)/g)) {
-    if (/attached pic/i.test(m[2])) continue;
-    video = { codec: m[1].toLowerCase(), rest: m[2] };
-    break;
+/** Turn each downloaded audio file into `<name>.wav` (ffmpeg -vn -ac 1 -ar 16000 -c:a pcm_s16le) and remove the intermediate file. */
+async function toAsrWav(files, row, ctx) {
+  const out = [];
+  for (const file of files) {
+    const target = uniquePath(path.join(path.dirname(file.path), `${path.basename(file.path, path.extname(file.path))}.wav`));
+    patchRow(row.id, { status: "processing", detail: "Preparando el audio para transcribir (WAV mono 16 kHz)…", speed: "", eta: "", progress: 95 });
+    const temp = `${target}.hoard-tmp.mp4`;
+    const r = await runProcess(ctx.tools.ffmpeg.command, ["-hide_banner", "-y", "-i", file.path, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-f", "wav", temp], { signal: ctx.signal });
+    if (r.code !== 0 || !fs.existsSync(temp)) {
+      fs.rmSync(temp, { force: true });
+      throw explainFailure("ffmpeg", r.stderr, { code: r.code });
+    }
+    fs.renameSync(temp, target);
+    if (path.normalize(file.path) !== path.normalize(target)) fs.rmSync(file.path, { force: true });
+    out.push(fileRecord(target));
   }
-  const audio = text.match(/Stream #\d+:\d+[^\n]*?: Audio: ([A-Za-z0-9_]+)/);
-  return { video, audio: audio ? audio[1].toLowerCase() : null };
+  return out;
 }
 
-export function needsTranscode({ video, audio }) {
-  if (video && (video.codec !== "h264" || /yuv420p(?:10|12)|yuv4[24]{2}p|rgb|gbr/i.test(video.rest))) return true;
-  if (audio && !["aac", "mp3"].includes(audio)) return true;
-  return false;
-}
+// -- H.264 / AAC so the file plays everywhere ------------------------------
 
 async function ensurePlayable(files, row, ctx) {
   if (process.env.LINKS_MEDIA_TRANSCODE === "0" || !ctx.tools.ffmpeg.found) return files;
@@ -1000,6 +871,7 @@ async function viaGallery(row, ctx) {
 }
 
 async function perform(row, ctx) {
+  await refusePrivateResolution(row.url);
   const [ytdlp, gallerydl, ffmpeg] = await Promise.all([resolveTool("ytdlp"), resolveTool("gallerydl"), resolveTool("ffmpeg")]);
   ctx.tools = { ytdlp, gallerydl, ffmpeg };
   ensureDir(row.dir);
@@ -1038,14 +910,6 @@ async function perform(row, ctx) {
 const AUTO_UPDATE_EVERY_MS = 6 * 3600_000; // at most one automatic update attempt every 6 hours
 const STALE_AFTER_DAYS = 45; // a yt-dlp build older than this is refreshed before downloading (LINKS_MEDIA_STALE_DAYS)
 const staleAfterDays = () => Number(process.env.LINKS_MEDIA_STALE_DAYS) || STALE_AFTER_DAYS;
-
-/** Age in days of a yt-dlp version string (YYYY.MM.DD[.N]), or null when it is not a date. */
-export function ytdlpAgeDays(version, today = new Date()) {
-  const m = String(version || "").match(/(\d{4})\.(\d{1,2})\.(\d{1,2})/);
-  if (!m) return null;
-  const built = Date.UTC(+m[1], +m[2] - 1, +m[3]);
-  return Math.floor((today.getTime() - built) / 86_400_000);
-}
 
 export function autoUpdateEnabled() {
   if (process.env.LINKS_MEDIA_AUTO_UPDATE === "0") return false;
@@ -1190,20 +1054,25 @@ async function finishLinkText(linkId, row, kind, isNew) {
 // probe: what is behind a link, without downloading
 // ---------------------------------------------------------------------------
 
+const probeInput = z.object({ url: z.string().trim().min(1), playlist: z.boolean().default(false), cookies_browser: startInput.shape.cookies_browser });
+
+/** Language codes of the manual and the automatic captions, deduplicated (manual first). */
+function captionLangs(info) {
+  const manual = Object.keys(info.subtitles || {}).filter((k) => k !== "live_chat");
+  const auto = Object.keys(info.automatic_captions || {}).filter((k) => k !== "live_chat");
+  return { manual, auto, all: [...new Set([...manual, ...auto])] };
+}
+
 export async function probeUrl(input = {}) {
-  const data = z.object({ url: z.string().trim().min(1), playlist: z.boolean().default(false), cookies_browser: startInput.shape.cookies_browser }).parse(input);
+  const data = probeInput.parse(input);
   const url = normalizeMediaUrl(data.url);
+  await refusePrivateResolution(url);
   const platform = detectPlatform(url);
   const [ytdlp, gallerydl] = await Promise.all([resolveTool("ytdlp"), resolveTool("gallerydl")]);
   if (!ytdlp.found) throw missingTool("ytdlp");
-  const attempt = async (cookie) => {
-    const r = await runProcess(ytdlp.command, buildProbeArgs({ url, playlist: data.playlist, cookie }), { timeoutMs: 90_000 });
-    if (r.code !== 0) throw explainFailure("yt-dlp", r.stderr, { code: r.code });
-    try { return JSON.parse(r.stdout); } catch { throw new MediaError("yt-dlp no devolvió información legible sobre este enlace."); }
-  };
   let info;
   try {
-    ({ value: info } = await withCookieAttempts(data.cookies_browser, attempt));
+    ({ value: info } = await withCookieAttempts(data.cookies_browser, (cookie) => ytdlpJson(ytdlp, url, cookie, { playlist: data.playlist })));
   } catch (error) {
     if (!(error.noVideo || error.unsupported)) throw error;
     if (!gallerydl.found) {
@@ -1225,12 +1094,76 @@ export async function probeUrl(input = {}) {
   }
   const isPlaylist = info._type === "playlist" && Array.isArray(info.entries);
   const heights = [...new Set((info.formats || []).map((f) => f.height).filter((h) => Number.isFinite(h) && h > 0))].sort((a, b) => b - a);
+  const thumbnail = typeof info.thumbnail === "string" && /^https?:/i.test(info.thumbnail) ? info.thumbnail
+    : [...(info.thumbnails || [])].reverse().map((t) => t?.url).find((u) => typeof u === "string" && /^https?:/i.test(u)) || "";
   return {
     url, platform, photo_post: false,
+    id: String(info.id || ""), extractor: String(info.extractor_key || info.extractor || ""),
     title: info.title || "", uploader: info.uploader || info.channel || info.uploader_id || "", upload_date: info.upload_date || "",
-    duration: Number(info.duration) || null, description: String(info.description || "").slice(0, 600),
+    duration: Number(info.duration) || null, description: String(info.description || "").slice(0, 2000),
+    thumbnail, subtitle_langs: captionLangs(info).all, is_live: !!(info.is_live || info.live_status === "is_live"),
     heights, has_audio: (info.formats || []).some((f) => f.acodec && f.acodec !== "none") || !(info.formats || []).length,
     is_playlist: isPlaylist, entries: isPlaylist ? info.entries.length : undefined,
     entry_titles: isPlaylist ? info.entries.slice(0, 10).map((e) => e?.title || e?.id || "") : undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// subtitles: the captions of a video as text with timing, without downloading it
+// ---------------------------------------------------------------------------
+
+const subtitlesInput = z.object({
+  url: z.string().trim().min(1),
+  langs: z.array(z.string().trim().min(1).max(20)).min(1).max(10).default(["es", "en"]),
+  cookies_browser: startInput.shape.cookies_browser,
+});
+
+/** The caption track for the first wanted language: manual before automatic; "es" also matches "es-419", "es-ES"... */
+export function pickCaptionTrack(info, langs) {
+  const { manual, auto } = captionLangs(info);
+  for (const wanted of langs) {
+    const w = wanted.toLowerCase();
+    const same = (key) => key.toLowerCase() === w || key.toLowerCase().startsWith(`${w}-`);
+    const m = manual.find(same);
+    if (m) return { lang: m, source: "manual" };
+    const a = auto.find(same);
+    if (a) return { lang: a, source: "auto" };
+  }
+  return null;
+}
+
+/** { text, lang, source: "manual"|"auto", cues: [{start_s, end_s, text}] } for the first of `langs` that has captions. */
+export async function getSubtitles(input = {}) {
+  const data = subtitlesInput.parse(input);
+  const url = normalizeMediaUrl(data.url);
+  await refusePrivateResolution(url);
+  const ytdlp = await resolveTool("ytdlp");
+  if (!ytdlp.found) throw missingTool("ytdlp");
+  const work = async (cookie) => {
+    const info = await ytdlpJson(ytdlp, url, cookie);
+    const track = pickCaptionTrack(info, data.langs);
+    if (!track) {
+      const available = captionLangs(info).all;
+      throw Object.assign(new MediaError(`No hay subtítulos en ${data.langs.join(", ")}${available.length ? ` (disponibles: ${available.join(", ")})` : " (el vídeo no tiene subtítulos)"}.`, { code: "NO_SUBTITLES", status: 404 }), { fatal: true });
+    }
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "links-subs-"));
+    try {
+      const args = [
+        ...ytdlpBaseArgs({ version: ytdlp.version }),
+        "--skip-download", "--no-warnings", "--no-playlist", track.source === "manual" ? "--write-subs" : "--write-auto-subs",
+        "--sub-langs", track.lang, "--sub-format", "vtt", ...cookieArgs(cookie), "-P", folder, "-o", "sub.%(ext)s", "--", url,
+      ];
+      const r = await runProcess(ytdlp.command, args, { timeoutMs: 90_000 });
+      const file = fs.readdirSync(folder).find((n) => n.endsWith(".vtt"));
+      if (!file) {
+        if (r.code !== 0) throw explainFailure("yt-dlp", r.stderr, { code: r.code });
+        throw Object.assign(new MediaError("yt-dlp no descargó el archivo de subtítulos.", { code: "NO_SUBTITLES", status: 404 }), { fatal: true });
+      }
+      const cues = subtitleCues(fs.readFileSync(path.join(folder, file), "utf8"));
+      return { text: cuesToText(cues), lang: track.lang, source: track.source, cues: cues.map((c) => ({ start_s: c.start_s, end_s: c.end_s, text: c.text })) };
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  };
+  return (await withCookieAttempts(data.cookies_browser, work)).value;
 }

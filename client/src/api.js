@@ -35,6 +35,13 @@ export const api = {
     create: (linkId, data) => request("POST", `/api/links/${linkId}/highlights`, data),
     update: (id, data) => request("PATCH", `/api/highlights/${id}`, data),
     remove: (id) => request("DELETE", `/api/highlights/${id}`),
+    toCards: (id, deck) => request("POST", `/api/highlights/${id}/to-cards`, deck ? { deck } : {}),
+    linkToCards: (linkId, deck) => request("POST", `/api/links/${linkId}/cards`, deck ? { deck } : {}),
+  },
+  resurface: (count) => request("GET", `/api/resurface${qs({ count })}`),
+  settings: {
+    get: () => request("GET", "/api/settings"),
+    save: (data) => request("POST", "/api/settings", data),
   },
   watches: {
     list: () => request("GET", "/api/watches"),

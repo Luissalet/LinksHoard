@@ -366,6 +366,25 @@ test("queue order, cancel of a waiting download and cancel of the running one (p
   assert.equal((await s.call("POST", `/api/media/${slow2.id}/retry`)).status, 409);
   await s.call("POST", `/api/media/${slow2.id}/cancel`);
   assert.equal((await waitTerminal(slow2.id)).status, "cancelled");
+
+  // the same story on the bus: progress with an ETA while it ran, cancelled for both, queued again on the retry
+  const typesOf = (id) => hubEvents.filter((e) => e.data.job_id === id).map((e) => e.type);
+  await until(() => typesOf(a.id).includes("links.job.cancelled") && typesOf(c.id).filter((t) => t === "links.job.queued").length === 2 && typesOf(slow2.id).includes("links.job.cancelled"));
+  const prog = hubEvents.find((e) => e.type === "links.job.progress" && e.data.job_id === a.id);
+  assert.ok(prog, "a progress event while the download ran");
+  assert.equal(prog.data.progress, 0.05);
+  assert.equal(prog.data.eta_s, 9);
+  assert.equal(prog.data.kind, "download");
+  assert.deepEqual(typesOf(a.id).filter((t) => t !== "links.job.progress"), ["links.job.queued", "links.job.started", "links.job.cancelled"]);
+  assert.deepEqual(typesOf(c.id).slice(0, 2), ["links.job.queued", "links.job.cancelled"], "a waiting one that is cancelled never started");
+});
+
+test("etaSeconds reads what the UI shows", () => {
+  assert.equal(media.etaSeconds("00:09"), 9);
+  assert.equal(media.etaSeconds("01:30"), 90);
+  assert.equal(media.etaSeconds("1:02:03"), 3723);
+  assert.equal(media.etaSeconds(""), null);
+  assert.equal(media.etaSeconds(undefined), null);
 });
 
 test("a finished download is saved as a link with a note, the caption and the right kind", async () => {
@@ -411,16 +430,26 @@ test("a finished download is saved as a link with a note, the caption and the ri
   assert.deepEqual(merged.tags.sort(), ["descarga", "mio"]);
   assert.match(merged.notes, /^mi nota\nDescargado en /);
 
-  // events on the family bus
-  await until(() => hubEvents.some((e) => e.type === "links.media.done"));
-  const ev = hubEvents.find((e) => e.type === "links.media.done" && e.data.id === done.id);
+  // canonical job events on the family bus (the hub aliases links.media.*, so the old names are not sent as well)
+  await until(() => hubEvents.some((e) => e.type === "links.job.done" && e.data.job_id === done.id));
+  const ev = hubEvents.find((e) => e.type === "links.job.done" && e.data.job_id === done.id);
   assert.equal(ev.source, "links");
+  assert.equal(ev.data.kind, "download");
+  assert.equal(ev.data.progress, 1);
+  assert.equal(ev.data.gpu, false);
+  assert.equal(ev.data.error, "");
   assert.equal(ev.data.files, 1);
   assert.equal(ev.data.link_id, done.link_id);
+  assert.equal(ev.data.source_url, done.url);
+  const mine = hubEvents.filter((e) => e.data.job_id === done.id).map((e) => e.type);
+  assert.deepEqual(mine.filter((t) => t !== "links.job.progress"), ["links.job.queued", "links.job.started", "links.job.done"]);
   const failed = await run({ url: "https://www.youtube.com/gone/ev1" });
   assert.equal(failed.status, "failed");
-  await until(() => hubEvents.some((e) => e.type === "links.media.failed" && e.data.id === failed.id));
-  assert.match(hubEvents.find((e) => e.type === "links.media.failed" && e.data.id === failed.id).data.error, /no está disponible/);
+  await until(() => hubEvents.some((e) => e.type === "links.job.failed" && e.data.job_id === failed.id));
+  const fev = hubEvents.find((e) => e.type === "links.job.failed" && e.data.job_id === failed.id);
+  assert.match(fev.data.error, /no está disponible/);
+  assert.equal(fev.data.kind, "download");
+  assert.equal(hubEvents.some((e) => e.type.startsWith("links.media.")), false, "no legacy names");
 });
 
 test("files stream with Range support so the UI can play and seek", async () => {

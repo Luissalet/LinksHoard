@@ -20,7 +20,7 @@ function useQueryParam(name) {
  * server-side filter; `showSave` shows the paste box (only on Bandeja/Todo).
  * Keyboard: j/k move selection, Enter opens, e archives, r toggles read.
  */
-export default function LinkList({ title, description, state, showSave = false, favoriteOnly = false }) {
+export default function LinkList({ title, description, state, showSave = false, favoriteOnly = false, before = null }) {
   const { notify, refresh } = useApp();
   const tagParam = useQueryParam("tag");
   const [items, setItems] = useState(null);
@@ -90,6 +90,7 @@ export default function LinkList({ title, description, state, showSave = false, 
       }
     >
       {showSave && <SaveBox notify={notify} onSaved={() => { load(); refresh(); }} />}
+      {before}
       <div className="mb-4">
         <input className="field" type="search" placeholder="Buscar en título, texto, notas y etiquetas…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar enlaces" />
       </div>

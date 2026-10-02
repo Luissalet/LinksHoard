@@ -23,6 +23,7 @@ import * as links from "./links.js";
 import { enqueueFetch, waitForFetch } from "./fetcher.js";
 import { excerptOf, wordCount } from "./extract.js";
 import * as family from "./hoard-link.js";
+import { appLink } from "./public-url.js";
 import { MediaQueue } from "./media-queue.js";
 import {
   MediaError, INSTALL_COMMAND, installHint, resolveTool, runProcess, runCapture, toolsStatus, updateTools, resetToolsCache,
@@ -432,6 +433,7 @@ function trickle(id, patch) {
   live.set(id, { ...(live.get(id) || {}), ...clean });
   if (Date.now() - (lastWrite.get(id) || 0) >= WRITE_EVERY_MS) flushLive();
   else if (!flushTimer) { flushTimer = setTimeout(flushLive, WRITE_EVERY_MS); flushTimer.unref?.(); }
+  if (clean.progress !== undefined) jobProgress(id);
 }
 
 /** Any other change: pending progress goes out together with it. */
@@ -539,6 +541,7 @@ export function initMedia() {
   shuttingDown = false;
   live.clear();
   lastWrite.clear();
+  lastProgress.clear();
   const ts = now();
   db().prepare(`UPDATE media_downloads SET status = 'failed', error = 'Descarga interrumpida al cerrar la app.', finished_at = ?, speed = '', eta = '' WHERE status IN ('downloading','processing')`).run(ts);
   const waiting = db().prepare(`SELECT id FROM media_downloads WHERE status = 'queued' ORDER BY created_at ASC, rowid ASC`).all();
@@ -546,11 +549,41 @@ export function initMedia() {
   return { requeued: waiting.length };
 }
 
-function emitFamily(type, row, extra = {}) {
-  family.emit(type, {
-    id: row.id, url: row.url, platform: row.platform, format: row.format, kind: row.kind || "", title: (row.title || "").slice(0, 200),
-    dir: row.dir, files: (row.files || []).length, bytes: row.total_bytes || 0, link_id: row.link_id || null, ...extra,
+// Canonical job events on the family bus: links.job.queued|started|progress|done|failed|cancelled with
+// {job_id, title, kind: "download", progress 0..1, gpu, eta_s, url, error}. The download's own facts ride along (source_url,
+// platform, format, media_kind, dir, files, bytes, link_id). The hub's older names (links.media.*) are not sent as well: it maps
+// them to these, so both would count the same download twice.
+const PROGRESS_EVERY_MS = 3000;
+const lastProgress = new Map(); // id -> { at, progress }
+
+/** "mm:ss" or "h:mm:ss" (what the UI shows) back to seconds; null when there is none. */
+export function etaSeconds(text) {
+  const m = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/.exec(String(text || "").trim());
+  return m ? Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+}
+
+function jobEvent(name, row, extra = {}) {
+  if (!row) return;
+  const progress = name === "done" ? 1 : Math.max(0, Math.min(1, (Number(row.progress) || 0) / 100));
+  family.emit(`links.job.${name}`, {
+    job_id: row.id, title: (row.title || row.url || "").slice(0, 200), kind: "download", progress, gpu: false,
+    eta_s: name === "progress" || name === "started" ? etaSeconds(row.eta) : null,
+    url: appLink("descargas"), error: extra.error || "",
+    source_url: row.url, platform: row.platform, format: row.format, media_kind: row.kind || "",
+    dir: row.dir, files: (row.files || []).length, bytes: row.total_bytes || 0, link_id: row.link_id || null,
   });
+  if (["done", "failed", "cancelled"].includes(name)) lastProgress.delete(row.id);
+}
+
+/** A progress event at most every 3 s, and only when the number moved. */
+function jobProgress(id) {
+  const last = lastProgress.get(id);
+  const t = Date.now();
+  if (last && t - last.at < PROGRESS_EVERY_MS) return;
+  const row = getRow(id);
+  if (!row || row.status !== "downloading" || (last && Math.round(row.progress) === last.progress)) return;
+  lastProgress.set(id, { at: t, progress: Math.round(row.progress) });
+  jobEvent("progress", row);
 }
 
 // ---------------------------------------------------------------------------
@@ -597,6 +630,7 @@ export function startDownload(input = {}) {
      VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`,
   ).run(id, url, detectPlatform(url), data.format, data.quality, dir, data.save_link ? 1 : 0, data.playlist ? 1 : 0, data.max_items, data.cookies_browser, now());
   queue.enqueue(id, (signal) => runDownload(id, signal));
+  jobEvent("queued", getRow(id));
   return { ...getDownload(id), existing: false };
 }
 
@@ -607,10 +641,12 @@ export function cancelDownload(id) {
   const how = queue.cancel(id);
   if (how === "pending") {
     patchRow(id, { status: "cancelled", error: "Cancelada antes de empezar.", finished_at: now(), speed: "", eta: "", detail: "" });
+    jobEvent("cancelled", getRow(id));
     terminal(id);
   } else if (how === false) {
     // the row says it is running but nothing is: a leftover from a crash
     patchRow(id, { status: "cancelled", error: "Cancelada.", finished_at: now(), speed: "", eta: "", detail: "" });
+    jobEvent("cancelled", getRow(id));
     terminal(id);
   }
   // how === "active": the runner notices the abort, kills the process tree and writes "cancelled"
@@ -626,6 +662,7 @@ export function retryDownload(id) {
     started_at: null, finished_at: null, cookies_browser: "",
   });
   queue.enqueue(id, (signal) => runDownload(id, signal));
+  jobEvent("queued", getRow(id));
   return getDownload(id);
 }
 
@@ -1042,6 +1079,7 @@ async function runDownload(id, signal) {
   if (!row || row.status !== "queued") return;
   const ctx = { signal, tools: null, partials: new Set(), notes: [], galleryFolder: "" };
   patchRow(id, { status: "downloading", started_at: now(), finished_at: null, progress: 0, speed: "", eta: "", detail: "Preparando…", error: "" });
+  jobEvent("started", getRow(id));
   try {
     let out;
     if (row.format !== "image" && autoUpdateEnabled()) {
@@ -1083,7 +1121,7 @@ async function runDownload(id, signal) {
       status: "done", progress: 100, speed: "", eta: "", link_id: linkId, finished_at: now(),
       detail: [out.note, ...ctx.notes].filter(Boolean).join(" "),
     });
-    emitFamily("links.media.done", getRow(id));
+    jobEvent("done", getRow(id));
     terminal(id);
     if (linkTask) {
       const task = linkTask().catch(() => {}).finally(() => post.delete(task));
@@ -1097,10 +1135,11 @@ async function runDownload(id, signal) {
       patchRow(id, shuttingDown
         ? { status: "failed", error: "Descarga interrumpida al cerrar la app.", finished_at: now(), speed: "", eta: "", detail: "" }
         : { status: "cancelled", error: "Cancelada.", finished_at: now(), speed: "", eta: "", detail: "" });
+      jobEvent(shuttingDown ? "failed" : "cancelled", getRow(id), shuttingDown ? { error: "Descarga interrumpida al cerrar la app." } : {});
     } else {
       if (ctx.galleryFolder) { try { fs.rmdirSync(ctx.galleryFolder); } catch { /* has files or gone */ } }
       patchRow(id, { status: "failed", error: error.message || String(error), finished_at: now(), speed: "", eta: "", detail: "" });
-      emitFamily("links.media.failed", getRow(id), { error: String(error.message || error).slice(0, 300) });
+      jobEvent("failed", getRow(id), { error: String(error.message || error).slice(0, 300) });
     }
     terminal(id);
   }

@@ -1,9 +1,9 @@
-// Single SQLite connection (node:sqlite, WAL) with ordered migrations.
+// Single SQLite connection (node:sqlite, WAL, busy_timeout) with ordered migrations: the opening, the migration runner and the
+// transactions are the shared openDatabase of hoard-commons/server.js; the schema (MIGRATIONS) is Links'.
 // Only the HTTP server process opens the database; the MCP bridge proxies.
-import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import { openDatabase } from "./hoard-commons/server.js";
 
 export const DB_FILE = "links-hoard.db";
 
@@ -128,6 +128,19 @@ const MIGRATIONS = [
   ALTER TABLE highlights ADD COLUMN card_deck TEXT NOT NULL DEFAULT '';
   ALTER TABLE links ADD COLUMN resurfaced_at TEXT NULL;
   `,
+  // 5: what the family's media service asks for besides the URL: sections to cut (JSON [[start_s, end_s]]), a duration limit, a height cap
+  // and the "audio for speech to text" flag (the file is a mono 16 kHz WAV), so a retry or a restart repeats the same request
+  `
+  ALTER TABLE media_downloads ADD COLUMN sections TEXT NOT NULL DEFAULT '';
+  ALTER TABLE media_downloads ADD COLUMN max_duration_s INTEGER NULL;
+  ALTER TABLE media_downloads ADD COLUMN max_height INTEGER NULL;
+  ALTER TABLE media_downloads ADD COLUMN asr INTEGER NOT NULL DEFAULT 0;
+  `,
+  // 6: validators of a page watch, so an unchanged page answers 304 instead of being downloaded again
+  `
+  ALTER TABLE watches ADD COLUMN last_etag TEXT NOT NULL DEFAULT '';
+  ALTER TABLE watches ADD COLUMN last_modified TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall
@@ -149,16 +162,15 @@ export function ftsEnabled() {
   return ftsAvailable;
 }
 
+let handle = null;
 let connection = null;
 let dataDirectory = null;
 
 export function init(dataDir) {
   if (connection) return connection;
-  fs.mkdirSync(dataDir, { recursive: true });
+  handle = openDatabase(path.join(dataDir, DB_FILE), { migrations: MIGRATIONS });
   dataDirectory = dataDir;
-  connection = new DatabaseSync(path.join(dataDir, DB_FILE));
-  connection.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
-  migrate(connection);
+  connection = handle.raw;
   tryCreateFts(connection);
   return connection;
 }
@@ -180,49 +192,20 @@ export function dataDir() {
 }
 
 export function close() {
-  if (connection) connection.close();
+  if (handle) handle.close(); // checkpoints the WAL
+  handle = null;
   connection = null;
   dataDirectory = null;
   ftsAvailable = false;
 }
 
-function migrate(conn) {
-  conn.exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
-  const row = conn.prepare("SELECT MAX(version) AS v FROM schema_version").get();
-  const current = row?.v || 0;
-  for (let i = current; i < MIGRATIONS.length; i++) {
-    conn.exec("BEGIN");
-    try {
-      conn.exec(MIGRATIONS[i]);
-      conn.prepare("INSERT INTO schema_version (version, applied_at) VALUES (?, ?)").run(i + 1, now());
-      conn.exec("COMMIT");
-    } catch (error) {
-      conn.exec("ROLLBACK");
-      throw error;
-    }
-  }
-}
-
 export const uid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
 
-/** Run fn inside a transaction; nested calls reuse the outer one. */
-let depth = 0;
+/** Run fn (synchronous) inside a transaction; nested calls become savepoints. */
 export function transaction(fn) {
-  const conn = db();
-  if (depth > 0) return fn();
-  conn.exec("BEGIN");
-  depth++;
-  try {
-    const out = fn();
-    conn.exec("COMMIT");
-    return out;
-  } catch (error) {
-    conn.exec("ROLLBACK");
-    throw error;
-  } finally {
-    depth--;
-  }
+  db();
+  return handle.tx(fn);
 }
 
 export function getSetting(key, fallback = null) {

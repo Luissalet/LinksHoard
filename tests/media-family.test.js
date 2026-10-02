@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { bootServer, tempDir } from "./helpers.js";
 import { installFakes } from "./media-fakes.js";
+import { createLink, getLink } from "../server/links.js";
 import { resetToolsCache, normalizeMediaUrl, probeUrl, startDownload } from "../server/media.js";
 
 const ENV_KEYS = ["LINKS_YTDLP", "LINKS_GALLERYDL", "LINKS_FFMPEG", "PYTHON", "FAKE_DIR", "FAKE_LOG", "LINKS_MEDIA_DIR", "LINKS_MEDIA_SIBLING_DIR", "LINKS_MEDIA_AUTO_UPDATE", "LINKS_ALLOW_PRIVATE_URLS", "LINKS_MEDIA_TRANSCODE"];
@@ -234,4 +235,16 @@ test("media URLs: private and local addresses are refused unless the person opte
   // opted in: the address rule is lifted, the scheme rule stays
   assert.equal(normalizeMediaUrl("http://192.168.1.5/v.mp4"), "http://192.168.1.5/v.mp4");
   assert.throws(() => normalizeMediaUrl("file:///etc/passwd"), /http\(s\)/);
+});
+
+test("import_video_transcript uses the same caption path as media_subtitles", async () => {
+  const { link } = createLink({ url: "https://www.youtube.com/subs/yt1", source: "manual" });
+  const r = await s.agent("import_video_transcript", { id: link.id });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.language, "es");
+  assert.match(getLink(link.id).content_text, /Primera línea del vídeo\./);
+  const none = createLink({ url: "https://www.youtube.com/nosubs/yt2", source: "manual" }).link;
+  const failed = await s.agent("import_video_transcript", { id: none.id });
+  assert.equal(failed.status, 400);
+  assert.match(failed.body.error, /no ofrece subtítulos/);
 });

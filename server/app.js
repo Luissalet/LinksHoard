@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { init as initDb } from "./db.js";
 import { installRoutes } from "./routes.js";
-import { installAgentRoutes, writeToken } from "./agent-routes.js";
+import { installAgentRoutes, loadToken } from "./agent-routes.js";
 import * as family from "./hoard-link.js";
 import { startScheduler } from "./watches.js";
 import { installMediaRoutes } from "./media-routes.js";
 import { initMedia } from "./media.js";
-import { createGuard } from "./guard.js";
+import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -26,7 +26,7 @@ export function resolveDataDir(env = process.env) {
 
 export function createApp({ dataDir, dataDirConfigured = false, serveStatic = true, allowedHosts = process.env.LINKS_ALLOWED_HOSTS } = {}) {
   initDb(dataDir);
-  const token = writeToken(dataDir);
+  const token = loadToken(dataDir);
   // Hoard Link 0.4: this app on the family bus (agent.call events, calls to
   // siblings through the hub, the hoard_link block in /api/health).
   family.configure({ app: "links", dataDir });
@@ -37,27 +37,14 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
 
   const app = express();
   app.disable("x-powered-by");
-  app.use(createGuard(allowedHosts));
+  app.use(createGuard({ allowedHosts }));
   app.use(express.json({ limit: "10mb" }));
   installRoutes(app, { version, dataDirConfigured });
   installMediaRoutes(app);
   installAgentRoutes(app, { token });
-  app.all(/^\/api(\/.*)?$/, (req, res) => res.status(404).json({ error: "Ruta no encontrada." }));
-
   const DIST = path.join(ROOT, "dist");
-  if (serveStatic && fs.existsSync(DIST)) {
-    app.use(express.static(DIST));
-    app.get(/^(?!\/api).*/, (req, res) => res.sendFile(path.join(DIST, "index.html")));
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  app.use((err, req, res, next) => {
-    if (err.type === "entity.parse.failed") return res.status(400).json({ error: "JSON no válido." });
-    const status = err.status || (err.issues ? 400 : 500);
-    const message = err.issues
-      ? err.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")
-      : err.message;
-    res.status(status).json({ error: message });
-  });
+  if (serveStatic && fs.existsSync(DIST)) installSpa(app, DIST, { express });
+  else app.all(/^\/api(\/.*)?$/, (req, res) => res.status(404).json({ error: "Ruta no encontrada.", code: "not_found" }));
+  installErrorHandlers(app);
   return { app, token, version };
 }

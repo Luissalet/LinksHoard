@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
-import { checkRequest, createGuard, hostOf, isAllowedHost, parseAllowedHosts } from "../server/guard.js";
+import { checkRequest, createGuard, hostOf, isAllowedHost, parseAllowedHosts } from "../server/hoard-commons/express.js";
 import { bootServer } from "./helpers.js";
 
 // fetch() overwrites the Host header, so raw http.request is used to forge it.
@@ -37,46 +37,50 @@ test("hostOf strips scheme, path and port and lowercases", () => {
   assert.equal(hostOf(""), "");
 });
 
-test("parseAllowedHosts accepts exact names and *.suffix patterns", () => {
-  assert.deepEqual(parseAllowedHosts(" pc.example , *.TS.net,, pc2.example:8443"), ["pc.example", "*.ts.net", "pc2.example"]);
+test("parseAllowedHosts accepts exact names and *.suffix patterns, and keeps a pinned port", () => {
+  assert.deepEqual(parseAllowedHosts(" pc.example , *.TS.net,, pc2.example:8443"), ["pc.example", "*.ts.net", "pc2.example:8443"]);
   assert.deepEqual(parseAllowedHosts(undefined), []);
 });
 
 test("isAllowedHost: local hosts, exact and wildcard entries, unknown rejected", () => {
   const allowed = parseAllowedHosts("pc.example,*.ts.net");
-  for (const host of ["localhost", "127.0.0.1", "[::1]", "pc.example", "my-pc.ts.net", "a.b.ts.net"]) assert.ok(isAllowedHost(host, allowed), host);
-  for (const host of ["ts.net", "evil.example", "pc.example.evil", "", undefined]) assert.equal(isAllowedHost(host, allowed), false, String(host));
-  assert.equal(isAllowedHost("my-pc.ts.net", []), false);
+  for (const host of ["localhost", "127.0.0.1", "[::1]", "pc.example", "my-pc.ts.net", "a.b.ts.net"]) assert.ok(isAllowedHost(host, null, allowed), host);
+  for (const host of ["ts.net", "evil.example", "pc.example.evil", "", undefined]) assert.equal(isAllowedHost(host, null, allowed), false, String(host));
+  assert.equal(isAllowedHost("my-pc.ts.net", null, []), false);
+  // an entry with a port only matches that port
+  const pinned = parseAllowedHosts("pc2.example:8443");
+  assert.ok(isAllowedHost("pc2.example:8443", null, pinned));
+  assert.equal(isAllowedHost("pc2.example:9999", null, pinned), false);
 });
 
 test("checkRequest: fetch metadata rules", () => {
-  const ok = (req) => assert.equal(checkRequest(req), null);
-  const bad = (req) => assert.equal(typeof checkRequest(req), "string");
-  ok({ method: "GET", headers: { host: "localhost:5180" } }); // curl / MCP bridge: no Sec-Fetch headers
-  ok({ method: "POST", headers: { host: "127.0.0.1:5180" } });
-  ok({ method: "GET", headers: { host: "localhost", ...NAV } }); // top-level navigation from another site
-  ok({ method: "GET", headers: { host: "localhost", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors" } });
-  bad({ method: "GET", headers: { host: "localhost", ...CORS } }); // cross-site fetch
-  bad({ method: "GET", headers: { host: "localhost", ...IFRAME } });
-  bad({ method: "GET", headers: { host: "localhost", ...NAV, "sec-fetch-dest": "embed" } });
-  bad({ method: "POST", headers: { host: "localhost", ...NAV } }); // form post from another site
-  bad({ method: "POST", headers: { host: "localhost", "sec-fetch-site": "same-origin", "sec-fetch-mode": "navigate" } });
-  bad({ method: "GET", headers: { host: "evil.example" } });
+  const ok = (method, headers) => assert.equal(checkRequest(method, headers), null);
+  const bad = (method, headers) => assert.equal(checkRequest(method, headers)?.[0], 403);
+  ok("GET", { host: "localhost:5180" }); // curl / MCP bridge: no Sec-Fetch headers
+  ok("POST", { host: "127.0.0.1:5180" });
+  ok("GET", { host: "localhost", ...NAV }); // top-level navigation from another site
+  ok("GET", { host: "localhost", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors" });
+  bad("GET", { host: "localhost", ...CORS }); // cross-site fetch
+  bad("GET", { host: "localhost", ...IFRAME });
+  bad("GET", { host: "localhost", ...NAV, "sec-fetch-dest": "embed" });
+  bad("POST", { host: "localhost", ...NAV }); // form post from another site
+  bad("POST", { host: "localhost", "sec-fetch-site": "same-origin", "sec-fetch-mode": "navigate" });
+  bad("GET", { host: "evil.example" });
 });
 
 test("checkRequest: Origin passes on host, not on exact string", () => {
   const allowed = parseAllowedHosts("*.ts.net");
   const headers = (origin) => ({ host: "my-pc.ts.net", origin });
-  assert.equal(checkRequest({ headers: headers("https://my-pc.ts.net:8443") }, allowed), null);
-  assert.equal(checkRequest({ headers: headers("http://localhost:5180") }, allowed), null);
-  assert.equal(checkRequest({ headers: headers("http://localhost:5173") }, allowed), null); // vite dev
-  assert.equal(typeof checkRequest({ headers: headers("https://evil.example") }, allowed), "string");
-  assert.equal(typeof checkRequest({ headers: { host: "localhost", origin: "http://my-pc.ts.net" } }), "string"); // not in the list
+  assert.equal(checkRequest("GET", headers("https://my-pc.ts.net:8443"), null, allowed), null);
+  assert.equal(checkRequest("GET", headers("http://localhost:5180"), null, allowed), null);
+  assert.equal(checkRequest("GET", headers("http://localhost:5173"), null, allowed), null); // vite dev
+  assert.equal(checkRequest("GET", headers("https://evil.example"), null, allowed)?.[0], 403);
+  assert.equal(checkRequest("GET", { host: "localhost", origin: "http://my-pc.ts.net" })?.[0], 403); // not in the list
 });
 
 test("guard middleware: cross-site navigation reaches /, embedding and fetches do not", async () => {
   const app = express();
-  app.use(createGuard("*.ts.net"));
+  app.use(createGuard({ allowedHosts: "*.ts.net" }));
   app.get("/", (req, res) => res.send("home"));
   const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;

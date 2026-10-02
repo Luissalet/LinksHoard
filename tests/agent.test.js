@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { bootServer, waitFetched, serveText, FIXTURE_ARTICLE } from "./helpers.js";
 import { TOOLS } from "../server/agent-tools.js";
@@ -39,10 +40,26 @@ test("agent/call requires the bearer token from the data dir", async () => {
   assert.equal((await s.call("POST", "/api/agent/call", { name: "list_links", arguments: {} }, { Authorization: "Bearer nope" })).status, 401);
   const token = fs.readFileSync(path.join(s.dataDir, "mcp-token"), "utf8").trim();
   assert.equal(token, s.token);
-  assert.equal(token.length, 64);
+  assert.ok(token.length >= 32 && !/\s/.test(token));
   const ok = await s.call("POST", "/api/agent/call", { name: "list_links", arguments: {} }, { Authorization: `Bearer ${token}` });
   assert.equal(ok.status, 200);
   assert.equal((await s.agent("nope", {})).status, 404);
+});
+
+test("the token is created once and kept across restarts, so a running bridge never goes stale", async () => {
+  const { loadToken } = await import("../server/agent-routes.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "links-token-"));
+  try {
+    const first = loadToken(dir);
+    assert.equal(loadToken(dir), first, "a second start adopts the token on disk");
+    if (process.platform !== "win32") assert.equal(fs.statSync(path.join(dir, "mcp-token")).mode & 0o777, 0o600);
+    fs.writeFileSync(path.join(dir, "mcp-token"), "short");
+    const replaced = loadToken(dir);
+    assert.notEqual(replaced, "short", "a corrupt or too short file gets a new token");
+    assert.equal(loadToken(dir), replaced);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 let linkId;

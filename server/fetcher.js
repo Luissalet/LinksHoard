@@ -2,10 +2,11 @@
 // extracts text with extract.js and writes the result back through links.js.
 import { extractHtml, kindFromResponse, oembedTitle, excerptOf, wordCount } from "./extract.js";
 import { applyFetchResult } from "./links.js";
+import { webGet } from "./hoard-commons/web.js";
+import { fetchProfile, USER_AGENT } from "./net-policy.js";
 
 const TIMEOUT_MS = 15_000;
 const MAX_BYTES = 5 * 1024 * 1024;
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) LinksHoard/1.0";
 const CONCURRENCY = 2;
 
 const queue = [];
@@ -15,45 +16,27 @@ let drainWaiters = [];
 let active = 0;
 let stopped = false;
 
-/** Read a response body up to maxBytes, aborting the stream past the limit. */
-async function readLimited(response, maxBytes) {
-  const reader = response.body?.getReader?.();
-  if (!reader) return await response.text();
-  const chunks = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.length;
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => {});
-      throw Object.assign(new Error("La página supera el límite de 5 MB."), { code: "TOO_LARGE" });
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8");
+/** What the person reads when a page could not be fetched: the shared fetcher's reason, in Spanish where it is about the address. */
+function failureMessage(r) {
+  if (r.errorKind === "policy") return `Esa dirección no se puede descargar: ${r.error}. Solo se descargan páginas públicas (LINKS_ALLOW_PRIVATE_URLS=1 permite las de tu red).`;
+  if (r.errorKind === "timeout") return "La página tardó demasiado en responder.";
+  return r.error || "Error al descargar.";
 }
 
 async function fetchOne(url) {
-  const response = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml,application/pdf,*/*" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const contentType = response.headers.get("content-type") || "";
-  const kind = kindFromResponse(response.url || url, contentType);
+  // webGet: address check on every redirect hop, charset detection, a body cap, block detection. accept "any" because PDFs and images are
+  // saved by their title only and must not be refused as "not HTML".
+  const r = await webGet(url, { profile: fetchProfile(), accept: "any", timeoutMs: TIMEOUT_MS, maxBytes: MAX_BYTES, userAgent: USER_AGENT });
+  if (!r.ok) throw new Error(failureMessage(r));
+  const finalUrl = r.finalUrl || url;
+  const kind = kindFromResponse(finalUrl, r.contentType);
 
-  if (kind === "pdf") {
-    return { kind, title: filenameTitle(response.url || url), description: "", contentText: "", byline: "", lang: "" };
-  }
-  if (kind === "image") {
-    return { kind, title: filenameTitle(response.url || url), description: "", contentText: "", byline: "", lang: "" };
+  if (kind === "pdf" || kind === "image") {
+    return { kind, title: filenameTitle(finalUrl), description: "", contentText: "", byline: "", lang: "" };
   }
 
-  const oembed = await oembedTitle(response.url || url).catch(() => null);
-  const html = await readLimited(response, MAX_BYTES);
-  const extracted = extractHtml(html, response.url || url);
+  const oembed = await oembedTitle(finalUrl).catch(() => null);
+  const extracted = extractHtml(r.text, finalUrl);
   if (oembed?.title) {
     extracted.title = oembed.title;
     if (oembed.byline) extracted.byline = oembed.byline;
@@ -125,9 +108,10 @@ export function waitForFetch(linkId, timeoutMs = 10_000) {
   if (!isPending) return Promise.resolve();
   return new Promise((resolve) => {
     const list = waiters.get(linkId) || [];
-    list.push({ resolve });
+    const timer = setTimeout(resolve, timeoutMs);
+    timer.unref?.(); // a settled wait must not keep the process alive for the rest of the timeout
+    list.push({ resolve: () => { clearTimeout(timer); resolve(); } });
     waiters.set(linkId, list);
-    setTimeout(resolve, timeoutMs);
   });
 }
 

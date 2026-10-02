@@ -3,6 +3,8 @@
 // PDFs and known video/social hosts get a lighter title-only extraction.
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
+import { hostOf, politeJson } from "./hoard-commons/web.js";
+import { fetchProfile } from "./net-policy.js";
 
 export function kindFromResponse(url, contentType) {
   const host = safeHost(url);
@@ -14,13 +16,7 @@ export function kindFromResponse(url, contentType) {
   return "other";
 }
 
-function safeHost(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
+const safeHost = (url) => hostOf(url).replace(/^www\./, "");
 
 const VIDEO_HOSTS = ["youtube.com", "youtu.be", "vimeo.com", "twitch.tv"];
 const SOCIAL_HOSTS = ["x.com", "twitter.com"];
@@ -163,14 +159,10 @@ export async function oembedTitle(url) {
     endpoint = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`;
   }
   if (!endpoint) return null;
-  try {
-    const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return { title: data.title || "", byline: data.author_name || "" };
-  } catch {
-    return null;
-  }
+  // politeJson: address check, one request at a time per host, a size cap and a timeout; never throws
+  const r = await politeJson(endpoint, { profile: fetchProfile(), timeoutMs: 8000, minIntervalMs: 250 });
+  if (!r.ok || !r.data || typeof r.data !== "object") return null;
+  return { title: r.data.title || "", byline: r.data.author_name || "" };
 }
 
 /**

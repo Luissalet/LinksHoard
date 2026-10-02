@@ -14,6 +14,10 @@
 //   /nofiles/<id>    exits 0 and creates nothing
 //   /flaky/<id>      fails with a network error until $FAKE_DIR/flaky-ok exists
 //   /blocked/<id>    HTTP 403 on the video data while the version is the old 2026.01.01 (an update fixes it)
+//   /long/<id>       a 2 h 10 min video (the info says duration 7800), for max_duration_s
+//   /subs/<id>       manual Spanish captions; /autosubs/<id> only automatic English ones; /nosubs/<id> none
+//                    (every other video has manual English and automatic Spanish + English)
+//   --download-sections "*s-e" / -o <template> are honoured: the file name comes from the template, [part N] included
 //
 // Every call appends its argv as a JSON line to $FAKE_LOG.
 import fs from "node:fs";
@@ -50,8 +54,26 @@ const version = () => { try { return fs.readFileSync(versionFile, "utf8").trim()
       console.log(JSON.stringify({ _type: "playlist", title: "Lista de prueba", entries: [{ id: "a", title: "Uno" }, { id: "b", title: "Dos" }] }));
       return;
     }
-    console.log(JSON.stringify({ id, title: "Título de prueba", uploader: "Canal de prueba", upload_date: "20260930", duration: 125.5,
-      description: "Descripción de prueba", formats: [{ format_id: "a", acodec: "aac", vcodec: "none" }, { format_id: "v1", height: 360, acodec: "none" }, { format_id: "v2", height: 1080, acodec: "none" }, { format_id: "v3", height: 720, acodec: "none" }] }));
+    const track = [{ ext: "vtt", url: "http://x/sub.vtt" }];
+    const captions = kind === "subs" ? { subtitles: { es: track }, automatic_captions: { en: track } }
+      : kind === "autosubs" ? { subtitles: {}, automatic_captions: { en: track, "es-orig": track } }
+      : kind === "nosubs" ? { subtitles: {}, automatic_captions: {} }
+      : { subtitles: { en: track, live_chat: track }, automatic_captions: { es: track, en: track } };
+    console.log(JSON.stringify({ id, title: "Título de prueba", uploader: "Canal de prueba", upload_date: "20260930", duration: kind === "long" ? 7800 : 125.5,
+      extractor_key: "Fake", thumbnail: "https://img.example.com/" + id + ".jpg", is_live: kind === "live", ...captions,
+      description: "Descripción de prueba" + (kind === "bigdesc" ? " " + "x".repeat(3000) : ""), formats: [{ format_id: "a", acodec: "aac", vcodec: "none" }, { format_id: "v1", height: 360, acodec: "none" }, { format_id: "v2", height: 1080, acodec: "none" }, { format_id: "v3", height: 720, acodec: "none" }] }));
+    return;
+  }
+  if (has("--skip-download") && (has("--write-subs") || has("--write-auto-subs"))) {
+    const lang = arg("--sub-langs");
+    const out = arg("-P");
+    fs.mkdirSync(out, { recursive: true });
+    const rolling = has("--write-auto-subs");
+    const vtt = rolling
+      ? ["WEBVTT", "Kind: captions", "Language: " + lang, "", "00:00:01.000 --> 00:00:03.000", "hola a todos", "", "00:00:03.000 --> 00:00:03.010", "hola a todos", "",
+        "00:00:03.010 --> 00:00:05.000", "hola a todos", "bienvenidos al canal", "", "00:00:05.000 --> 00:00:05.010", "bienvenidos al canal", ""].join("\\n")
+      : ["WEBVTT", "", "00:00:00.500 --> 00:00:02.000", "Primera línea <c>del</c> vídeo.", "", "00:00:02.500 --> 00:00:04.000", "Segunda línea &amp; fin.", ""].join("\\n");
+    fs.writeFileSync(path.join(out, "sub." + lang + ".vtt"), vtt);
     return;
   }
   if (kind === "photos") { console.error("ERROR: [Instagram] " + id + ": There is no video in this post"); process.exit(1); }
@@ -68,7 +90,8 @@ const version = () => { try { return fs.readFileSync(versionFile, "utf8").trim()
   const audio = has("-x");
   const ext = audio ? "mp3" : "mp4";
   const title = "Título " + id;
-  const file = path.join(out, title + " [" + id + "]." + ext);
+  const template = argv.filter((x, i) => argv[i - 1] === "-o").pop() || "%(title).120s [%(id)s].%(ext)s";
+  const file = path.join(out, template.replace("%(title).120s", title).replace("%(id)s", id).replace("%(ext)s", ext));
   const kb = (n) => n * 1024;
   console.log("LHSEL|" + (audio ? "251" : "137+140") + "|NA|NA|" + file);
   if (kind === "slow") {
@@ -151,7 +174,8 @@ ${COMMON}
     console.error("  Stream #0:1[0x2](und): Audio: " + audio + ", 44100 Hz, stereo");
     process.exit(1);
   }
-  fs.writeFileSync(last, Buffer.concat([Buffer.from("H264"), Buffer.alloc(4096, 9)]));
+  // speech-to-text audio: mono 16 kHz PCM WAV
+  fs.writeFileSync(last, has("-ar") ? Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4, 0), Buffer.from("WAVE"), Buffer.alloc(2048, 3)]) : Buffer.concat([Buffer.from("H264"), Buffer.alloc(4096, 9)]));
 })();
 `;
 

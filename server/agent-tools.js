@@ -23,7 +23,7 @@ Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was
 delete_link is irreversible: confirm with the user before calling it.
 highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "Lecturas") through the hub; report the status it returns, and say plainly when the hub or Hypatia is not there. resurface answers "what should I read today": quote the title, site and reason of each item and open nothing without being asked.
 Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
-When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe shows what a link holds (title, duration, available heights, playlist or photo post) without downloading. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.`;
+When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
 
@@ -68,6 +68,8 @@ const tool = (name, description, schema, hints, run) => ({
   run,
 });
 const RO = { readOnlyHint: true, idempotentHint: true };
+const SECTIONS = z.array(z.tuple([z.number().min(0), z.number().positive()])).max(10).optional()
+  .describe("Only these parts: [[start_s, end_s], ...] (at most 10, 0 <= start < end); several parts give one file each");
 
 /** What the assistant sees of a download: the facts it must report, with absolute paths. */
 function agentView(row, { started = false, existing, detail = false } = {}) {
@@ -321,12 +323,16 @@ export const TOOLS = [
     z.object({}), RO,
     () => ({ tags: links.listTags() })),
   tool("media_download",
-    "Download a video, audio or photos from a link (YouTube, X, Instagram, TikTok…) — descargar, bájame\nDownloads the media behind a URL to disk with yt-dlp (video as H.264/AAC MP4, or audio as MP3) and gallery-dl (photo posts and carousels). format: auto (default: video, or the photos when the post has no video), video, audio or image. quality for video: best, 1080, 720, 480. Saves into the configured downloads folder (dir overrides it) and, with save_link (default true), also saves the URL to the library with the tag descarga and the caption. Waits up to timeout_s (default 150, under the assistant's 180 s call limit) and returns ok, status and the files with absolute path and size; if it is still running it returns the id so media_status can follow it. Never claim success unless ok is true and files is not empty.\nSinónimos: descárgame esto, descarga este vídeo, bájame, bájate, guarda el vídeo, sácame el audio, pásalo a mp3, descargar de YouTube, descargar reel, descargar tweet, bajar música, descargar fotos de Instagram, guardar el vídeo en el disco",
+    "Download a video, audio or photos from a link (YouTube, X, Instagram, TikTok…) — descargar, bájame\nDownloads the media behind a URL to disk with yt-dlp (video as H.264/AAC MP4, or audio as MP3) and gallery-dl (photo posts and carousels). format: auto (default: video, or the photos when the post has no video), video, audio or image. quality for video: best, 1080, 720, 480 (max_height caps it further; the lower wins). sections cuts only the given [start_s, end_s] ranges (at most 10; several give one file per part); max_duration_s refuses a longer video before downloading anything. Saves into the configured downloads folder (dir or dest_dir override it) and, with save_link (default true), also saves the URL to the library with the tag descarga and the caption. Waits up to timeout_s (default 150, under the assistant's 180 s call limit) and returns ok, status and the files with absolute path and size; if it is still running it returns the id so media_status can follow it. Never claim success unless ok is true and files is not empty.\nSinónimos: descárgame esto, descarga este vídeo, bájame, bájate, guarda el vídeo, sácame el audio, pásalo a mp3, descargar de YouTube, descargar reel, descargar tweet, bajar música, descargar fotos de Instagram, guardar el vídeo en el disco",
     z.object({
       url: z.string().trim().min(1).describe("Link to the video, audio or post"),
       format: z.enum(media.FORMATS).default("auto"),
       quality: z.union([z.enum(media.QUALITIES), z.number().int().min(144).max(4320)]).default("best").describe("Maximum video height: best, 1080, 720, 480…"),
       dir: z.string().trim().max(1000).optional().describe("Absolute folder to save into (default: the configured downloads folder)"),
+      dest_dir: z.string().trim().max(1000).optional().describe("Alias of dir (the other family apps send both)"),
+      sections: SECTIONS,
+      max_duration_s: z.number().positive().max(7 * 24 * 3600).optional().describe("Refuse a video longer than this many seconds, before downloading"),
+      max_height: z.number().int().min(144).max(4320).optional().describe("Cap the resolution (on top of quality: the lower wins)"),
       save_link: z.boolean().default(true).describe("Also save the URL in the library (tag descarga)"),
       playlist: z.boolean().default(false).describe("Download a whole playlist (up to max_items) instead of the single video"),
       max_items: z.number().int().min(1).max(500).default(media.DEFAULT_MAX_ITEMS),
@@ -336,8 +342,9 @@ export const TOOLS = [
     }), { openWorldHint: true },
     async (a) => {
       const started = media.startDownload({
-        url: a.url, format: a.format, quality: String(a.quality), dir: a.dir, save_link: a.save_link,
+        url: a.url, format: a.format, quality: String(a.quality), dir: a.dir, dest_dir: a.dest_dir, save_link: a.save_link,
         playlist: a.playlist, max_items: a.max_items, cookies_browser: a.cookies_browser || "auto",
+        sections: a.sections, max_duration_s: a.max_duration_s, max_height: a.max_height,
       });
       if (!a.wait) return agentView(started, { started: true, existing: started.existing });
       const done = await media.waitForDownload(started.id, a.timeout_s * 1000);
@@ -385,6 +392,42 @@ export const TOOLS = [
       cookies_browser: z.string().trim().max(60).optional(),
     }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     (a) => media.probeUrl({ url: a.url, playlist: a.playlist, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_info",
+    "What is behind a link, for other apps and for the assistant — información del enlace, metadatos del vídeo\nSame as media_probe plus the fields the family clients need: id, extractor, thumbnail (URL), subtitle_langs (manual and automatic captions, deduplicated), is_live, description (up to 2000 characters), heights, is_playlist and, for a photo post, photo_post: true. Does not download anything. Needs the network.\nSinónimos: información del vídeo, qué subtítulos tiene, miniatura del vídeo, metadatos del enlace, idiomas de los subtítulos, es un directo",
+    z.object({
+      url: z.string().trim().min(1),
+      playlist: z.boolean().default(false),
+      cookies_browser: z.string().trim().max(60).optional(),
+    }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => media.probeUrl({ url: a.url, playlist: a.playlist, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_subtitles",
+    "Get the captions of a video as text with timing — subtítulos, transcripción de un vídeo\nReads the subtitles of a video without downloading it: langs (default es, en) in order of preference, the first language that has captions wins, manual captions before automatic ones. Returns text (continuous speech, rolling auto-caption repeats removed), lang, source (manual or auto) and cues [{start_s, end_s, text}]. Fails with a clear message when there are none, listing the languages that exist.\nSinónimos: dame los subtítulos, transcripción del vídeo de YouTube, qué dice el vídeo, resumen del vídeo sin descargarlo, texto del vídeo, subtítulos automáticos",
+    z.object({
+      url: z.string().trim().min(1),
+      langs: z.array(z.string().trim().min(1).max(20)).min(1).max(10).default(["es", "en"]).describe("Languages in order of preference"),
+      cookies_browser: z.string().trim().max(60).optional(),
+    }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => media.getSubtitles({ url: a.url, langs: a.langs, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_audio_for_asr",
+    "Download the audio of a link as mono 16 kHz WAV for speech to text — audio para transcribir\nLike media_download with format audio, but the file is a mono 16 kHz PCM WAV (what the speech-to-text engines read), kept in the downloads folder's asr subfolder and never saved as a library link. sections cuts parts, max_duration_s refuses a longer video. Waits up to timeout_s (default 150) and returns the download view; files[0].path is the WAV. If it is still running, follow it with media_status.\nSinónimos: audio para transcribir, sacar el audio en wav, audio para whisper, preparar el audio para el reconocimiento de voz",
+    z.object({
+      url: z.string().trim().min(1),
+      sections: SECTIONS,
+      max_duration_s: z.number().positive().max(7 * 24 * 3600).optional(),
+      cookies_browser: z.string().trim().max(60).optional(),
+      wait: z.boolean().default(true),
+      timeout_s: z.number().int().min(5).max(3600).default(150),
+    }), { openWorldHint: true },
+    async (a) => {
+      const started = media.startDownload({
+        url: a.url, format: "audio", asr: true, save_link: false, sections: a.sections, max_duration_s: a.max_duration_s, cookies_browser: a.cookies_browser || "auto",
+      });
+      if (!a.wait) return agentView(started, { started: true, existing: started.existing });
+      return agentView(await media.waitForDownload(started.id, a.timeout_s * 1000), { existing: started.existing });
+    }),
 
   tool("media_tools",
     "Show or update yt-dlp, gallery-dl and ffmpeg — herramientas de descarga, actualizar yt-dlp\nReports which of yt-dlp, gallery-dl and ffmpeg were found (path, version and how: env, PATH, sibling app folder, python module), the downloads folder and the install command when something is missing. update: true runs the updaters (yt-dlp -U or pip install -U) and returns the versions before and after.\nSinónimos: tengo yt-dlp, está instalado ffmpeg, actualizar yt-dlp, por qué no descarga, instalar el descargador, versión de yt-dlp, herramientas de descarga",

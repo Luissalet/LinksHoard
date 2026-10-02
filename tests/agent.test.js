@@ -5,7 +5,7 @@ import path from "node:path";
 import { bootServer, waitFetched, serveText, FIXTURE_ARTICLE } from "./helpers.js";
 import { TOOLS } from "../server/agent-tools.js";
 
-const EXPECTED = ["save_link", "list_links", "search_links", "read_link", "tag_link", "mark_link", "add_highlight", "import_video_transcript", "link_digest", "refetch_link", "delete_link", "watch_add", "watch_list", "watch_items", "watch_check", "watch_dismiss", "watch_remove", "highlights_to_cards", "resurface", "list_tags", "media_download", "media_status", "media_cancel", "media_retry", "media_probe", "media_tools", "media_delete"];
+const EXPECTED = ["save_link", "list_links", "search_links", "read_link", "tag_link", "mark_link", "add_highlight", "import_video_transcript", "link_digest", "refetch_link", "delete_link", "watch_add", "watch_list", "watch_items", "watch_check", "watch_dismiss", "watch_remove", "highlights_to_cards", "resurface", "list_tags", "media_download", "media_status", "media_cancel", "media_retry", "media_probe", "media_info", "media_subtitles", "media_audio_for_asr", "media_tools", "media_delete"];
 
 let s, fixture;
 before(async () => {

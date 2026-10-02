@@ -11,7 +11,7 @@ import { installFakes } from "./media-fakes.js";
 import * as media from "../server/media.js";
 import * as links from "../server/links.js";
 import { db, now, setSetting } from "../server/db.js";
-import { resetToolsCache } from "../server/media-tools.js";
+import { resetToolsCache } from "../server/media.js";
 import * as family from "../server/hoard-link.js";
 import { AGENT_INSTRUCTIONS } from "../server/agent-tools.js";
 
@@ -613,14 +613,18 @@ test("missing programs give the install command, not a stack trace", async () =>
 
     // yt-dlp present, ffmpeg missing: audio cannot be extracted and says so; video still works
     setEnv({ LINKS_YTDLP: saved.LINKS_YTDLP, LINKS_GALLERYDL: saved.LINKS_GALLERYDL, LINKS_FFMPEG: path.join(empty, "no-ffmpeg") });
-    const audio = await run({ url: "https://example.com/video/noff", format: "audio" });
-    assert.equal(audio.status, "failed");
-    assert.match(audio.error, /Falta ffmpeg/);
-    const video = await run({ url: "https://example.com/video/noff2", format: "video" });
-    assert.equal(video.status, "done", video.error);
-    const call = ytCalls().filter((c) => lastUrl(c).endsWith("/video/noff2")).at(-1);
-    assert.ok(!call.argv.includes("--merge-output-format"), "no merging without ffmpeg");
-    assert.match(arg(call, "-f"), /^b\[ext=mp4\]/);
+    // the shared lookup also finds an ffmpeg in the usual system folders, which a developer machine usually has
+    const systemFfmpeg = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].some((d) => fs.existsSync(path.join(d, "ffmpeg")));
+    if (!systemFfmpeg) {
+      const audio = await run({ url: "https://example.com/video/noff", format: "audio" });
+      assert.equal(audio.status, "failed");
+      assert.match(audio.error, /Falta ffmpeg/);
+      const video = await run({ url: "https://example.com/video/noff2", format: "video" });
+      assert.equal(video.status, "done", video.error);
+      const call = ytCalls().filter((c) => lastUrl(c).endsWith("/video/noff2")).at(-1);
+      assert.ok(!call.argv.includes("--merge-output-format"), "no merging without ffmpeg");
+      assert.match(arg(call, "-f"), /^b\[ext=mp4\]/);
+    }
   } finally {
     setEnv({ ...saved });
     fs.rmSync(empty, { recursive: true, force: true });
@@ -695,7 +699,9 @@ test("updating the tools: self-update when it is a binary, pip when it is a pyth
   assert.equal(status.body.ytdlp.version, "2026.02.02");
   const both = await s.call("POST", "/api/media/tools/update", {});
   assert.deepEqual(both.body.results.map((r) => r.tool), ["ytdlp", "gallerydl"]);
-  assert.equal(both.body.results[1].after, "1.31.0");
+  // gallery-dl is updated through pip by the shared tools (the fake python only knows yt-dlp's version file)
+  assert.equal(both.body.results[1].tool, "gallerydl");
+  assert.match(both.body.results[1].method, /-m pip install -U gallery-dl/);
 
   // as a module: python -m pip install -U yt-dlp
   fs.rmSync(path.join(fakes.dir, "ytdlp-version"), { force: true });
@@ -710,7 +716,7 @@ test("updating the tools: self-update when it is a binary, pip when it is a pyth
     assert.match(p.method, /-m pip install -U yt-dlp/);
     assert.equal(p.before, "2026.01.01");
     assert.equal(p.after, "2026.03.03");
-    const pipCall = fakes.calls("python").find((c) => c.argv.includes("pip"));
+    const pipCall = fakes.calls("python").find((c) => c.argv.includes("pip") && c.argv.includes("yt-dlp"));
     assert.deepEqual(pipCall.argv, ["-m", "pip", "install", "-U", "--disable-pip-version-check", "yt-dlp"]);
   } finally {
     setEnv({ ...fakes.env, PATH: savedEnv.PATH });

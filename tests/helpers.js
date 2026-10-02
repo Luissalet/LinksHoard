@@ -7,6 +7,9 @@ import { close } from "../server/db.js";
 import { drain } from "../server/fetcher.js";
 import { shutdownMedia } from "../server/media.js";
 
+// The tests serve pages and media from 127.0.0.1; the app refuses loopback addresses unless this is set (tests/net-policy.test.js turns it off to check).
+process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
+
 export function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-"));
 }

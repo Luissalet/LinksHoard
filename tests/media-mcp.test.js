@@ -10,7 +10,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { bootServer, tempDir } from "./helpers.js";
 import { installFakes } from "./media-fakes.js";
 import { callTimeoutMs, postJson } from "../server/bridge-call.js";
-import { resetToolsCache } from "../server/media-tools.js";
+import { resetToolsCache } from "../server/media.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "mcp.js");
 const ENV_KEYS = ["LINKS_YTDLP", "LINKS_GALLERYDL", "LINKS_FFMPEG", "PYTHON", "FAKE_DIR", "FAKE_LOG", "LINKS_MEDIA_DIR", "LINKS_MEDIA_SIBLING_DIR", "LINKS_MEDIA_AUTO_UPDATE"];
@@ -46,7 +46,7 @@ const call = async (name, args) => {
 test("the bridge lists the media tools with their descriptions and input schemas", async () => {
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name);
-  for (const n of ["media_download", "media_status", "media_cancel", "media_retry", "media_probe", "media_tools", "media_delete"]) assert.ok(names.includes(n), n);
+  for (const n of ["media_download", "media_status", "media_cancel", "media_retry", "media_probe", "media_info", "media_subtitles", "media_audio_for_asr", "media_tools", "media_delete"]) assert.ok(names.includes(n), n);
   const dl = tools.find((t) => t.name === "media_download");
   assert.match(dl.description, /descárgame esto/);
   assert.deepEqual(dl.inputSchema.properties.format.enum, ["auto", "video", "audio", "image"]);

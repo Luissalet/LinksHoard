@@ -614,7 +614,7 @@ test("missing programs give the install command, not a stack trace", async () =>
     // yt-dlp present, ffmpeg missing: audio cannot be extracted and says so; video still works
     setEnv({ LINKS_YTDLP: saved.LINKS_YTDLP, LINKS_GALLERYDL: saved.LINKS_GALLERYDL, LINKS_FFMPEG: path.join(empty, "no-ffmpeg") });
     // the shared lookup also finds an ffmpeg in the usual system folders, which a developer machine usually has
-    const systemFfmpeg = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].some((d) => fs.existsSync(path.join(d, "ffmpeg")));
+    const systemFfmpeg = (await s.call("GET", "/api/media/tools?refresh=1")).body.ffmpeg.found;
     if (!systemFfmpeg) {
       const audio = await run({ url: "https://example.com/video/noff", format: "audio" });
       assert.equal(audio.status, "failed");

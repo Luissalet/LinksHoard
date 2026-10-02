@@ -298,6 +298,32 @@ test("tool lookup order: env, PATH, sibling app folder, python module", async ()
   }
 });
 
+test("$HOARD_HOME/bin is searched before PATH and the sibling app folder is only one more candidate", { skip: process.platform === "win32" }, async () => {
+  const dir = tempDir();
+  try {
+    const home = path.join(dir, "hoard-home");
+    fs.mkdirSync(path.join(home, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(home, "bin", "yt-dlp"), `#!${process.execPath}\nconsole.log("2026.05.05");\n`, { mode: 0o755 });
+    const sibling = path.join(dir, "Writers hoard desktop", "resources", "bin");
+    fs.mkdirSync(sibling, { recursive: true });
+    fs.writeFileSync(path.join(sibling, "yt-dlp"), `#!${process.execPath}\nconsole.log("2024.04.04");\n`, { mode: 0o755 });
+    const env = { PATH: path.join(dir, "empty"), HOARD_HOME: home };
+    const viaHome = await resolveTool("ytdlp", { env, siblingDir: sibling, refresh: true });
+    assert.equal(viaHome.how, "hoard-bin");
+    assert.equal(viaHome.version, "2026.05.05");
+    // without it the sibling folder still works
+    const viaSibling = await resolveTool("ytdlp", { env: { PATH: env.PATH, HOARD_HOME: path.join(dir, "nowhere") }, siblingDir: sibling, refresh: true });
+    assert.equal(viaSibling.how, "sibling");
+    // the default sibling path is one candidate, "off" turns it off, an override replaces it
+    assert.match(defaultSiblingDir({}), /Writers hoard desktop[\\/]resources[\\/]bin$/);
+    assert.equal(defaultSiblingDir({ LINKS_MEDIA_SIBLING_DIR: "off" }), null);
+    assert.equal(defaultSiblingDir({ LINKS_MEDIA_SIBLING_DIR: sibling }), sibling);
+  } finally {
+    resetToolsCache();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("the queue runs one job at a time, in order, and cancels waiting jobs without running them", async () => {
   const q = new MediaQueue();
   const order = [];

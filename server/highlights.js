@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { db, uid, now } from "./db.js";
 import { getLink } from "./links.js";
+import * as family from "./hoard-link.js";
 
 export const highlightInput = z.object({
   text: z.string().trim().min(1).max(5000),
@@ -25,6 +26,8 @@ export function addHighlight(linkId, input) {
   const id = uid();
   db().prepare("INSERT INTO highlights (id, link_id, text, note, created_at) VALUES (?, ?, ?, ?, ?)")
     .run(id, linkId, data.text, data.note, now());
+  // On the family bus: Hypatia and the hub's rules can react to a new highlight (never throws, never waits).
+  family.emit("links.highlight.added", { highlight_id: id, link_id: linkId });
   return getHighlight(id);
 }
 

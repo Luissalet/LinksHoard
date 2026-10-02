@@ -68,6 +68,25 @@ export default function Reader({ linkId }) {
     setHighlights((h) => h.filter((x) => x.id !== id));
   };
 
+  // Highlights to Hypatia flashcards, through the hub. The server answers 200 with a status: say what it means.
+  const CARD_MESSAGES = {
+    hub_down: "No se alcanza el hub de Hoard Link: arráncalo y vuelve a intentarlo.",
+    hypatia_unavailable: "El hub no encuentra Hypatia (o es una versión sin tarjetas): ábrela y vuelve a intentarlo.",
+    hub_refused: "El hub no aceptó el token de esta aplicación.",
+    hypatia_error: "Hypatia respondió con un error.",
+  };
+  const sendToHypatia = async (highlight) => {
+    const out = await run(() => (highlight ? api.highlights.toCards(highlight.id) : api.highlights.linkToCards(linkId)), null);
+    if (!out) return;
+    if (out.ok) {
+      notify({ kind: "ok", text: out.sent ? `${out.sent} ${out.sent === 1 ? "tarjeta enviada" : "tarjetas enviadas"} a Hypatia (mazo ${out.deck}).` : "Todo estaba ya enviado a Hypatia." });
+      const list = await api.highlights.list(linkId).catch(() => null);
+      if (list) setHighlights(list);
+    } else {
+      notify({ kind: "error", text: `${CARD_MESSAGES[out.status] || "No se pudo enviar a Hypatia."}${out.error ? ` (${out.error})` : ""}` });
+    }
+  };
+
   const saveNoteFor = async (id, note) => {
     const updated = await run(() => api.highlights.update(id, { note }));
     if (updated) setHighlights((h) => h.map((x) => (x.id === id ? updated : x)));
@@ -149,7 +168,12 @@ export default function Reader({ linkId }) {
       <HighlightPopover rect={selection?.rect} onSave={saveHighlight} onClose={() => setSelection(null)} />
 
       <section className="mt-10 border-t pt-6" style={{ borderColor: "var(--line)" }}>
-        <h2 className="text-[16px] font-semibold">Subrayados</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[16px] font-semibold">Subrayados</h2>
+          {highlights.some((h) => !h.card_sent_at) && (
+            <button type="button" className="btn btn-sm" onClick={() => sendToHypatia(null)} disabled={busy}>Enviar todos a Hypatia</button>
+          )}
+        </div>
         {highlights.length === 0 ? (
           <p className="help mt-2">Selecciona texto arriba y pulsa «Subrayar» para guardarlo.</p>
         ) : (
@@ -164,8 +188,11 @@ export default function Reader({ linkId }) {
                   onBlur={(e) => { if (e.target.value !== h.note) saveNoteFor(h.id, e.target.value); }}
                 />
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="help text-[11px]">{formatDate(h.created_at)}</span>
-                  <button type="button" className="btn-link text-[12px]" onClick={() => setPendingDelete(h)}>Borrar</button>
+                  <span className="help text-[11px]">{formatDate(h.created_at)}{h.card_sent_at && <> · <span className="chip" title={`Enviada a Hypatia (mazo ${h.card_deck || "Lecturas"})`}>En Hypatia ✓</span></>}</span>
+                  <span className="flex items-center gap-3">
+                    <button type="button" className="btn-link text-[12px]" onClick={() => sendToHypatia(h)} disabled={busy}>{h.card_sent_at ? "Enviar de nuevo" : "Enviar a Hypatia"}</button>
+                    <button type="button" className="btn-link text-[12px]" onClick={() => setPendingDelete(h)}>Borrar</button>
+                  </span>
                 </div>
               </li>
             ))}

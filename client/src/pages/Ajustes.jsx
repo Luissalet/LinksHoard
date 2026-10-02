@@ -31,6 +31,14 @@ export default function Ajustes() {
     if (out) { setMedia(out); setMediaDir(out.dir_is_default ? "" : out.dir); }
   };
 
+  const [reading, setReading] = useState({ digest: true, count: 3 });
+  useEffect(() => { api.settings.get().then((r) => setReading(r.resurface)).catch(() => {}); }, []);
+  const saveReading = async (e) => {
+    e.preventDefault();
+    const out = await run(() => api.settings.save({ resurface: { digest: reading.digest, count: Number(reading.count) } }), "Ajustes de lectura guardados.");
+    if (out) setReading(out.resurface);
+  };
+
   const runImport = async (e) => {
     e.preventDefault();
     if (!content.trim()) return;
@@ -90,6 +98,19 @@ export default function Ajustes() {
           {media?.last_auto_update && (
             <p className="help">Última actualización automática: {new Date(media.last_auto_update.at).toLocaleString("es-ES")} — {media.last_auto_update.ok ? `${media.last_auto_update.before} → ${media.last_auto_update.after}` : `falló: ${media.last_auto_update.error || "sin detalle"}`}</p>
           )}
+          <div><button type="submit" className="btn btn-primary" disabled={busy}>Guardar</button></div>
+        </form>
+      </Section>
+
+      <Section title="Para leer hoy" className="mt-4">
+        <form onSubmit={saveReading} className="grid gap-3">
+          <Field label="Enlaces al día" help="Cuántos enlaces guardados hace tiempo se te ponen delante cada día en la Bandeja. Nunca el mismo dos veces en 14 días.">
+            <input className="field w-[100px]" type="number" min="1" max="10" value={reading.count} onChange={(e) => setReading((r) => ({ ...r, count: e.target.value }))} />
+          </Field>
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={reading.digest} onChange={(e) => setReading((r) => ({ ...r, digest: e.target.checked }))} />
+            Avisar al resumen diario de la familia (una línea al día, a partir de las 08:00)
+          </label>
           <div><button type="submit" className="btn btn-primary" disabled={busy}>Guardar</button></div>
         </form>
       </Section>

@@ -122,6 +122,12 @@ const MIGRATIONS = [
   CREATE INDEX media_downloads_created ON media_downloads(created_at);
   CREATE INDEX media_downloads_status ON media_downloads(status);
   `,
+  // 4: which highlights already became Hypatia cards, and when a link was last put in front of the user ("Para leer hoy")
+  `
+  ALTER TABLE highlights ADD COLUMN card_sent_at TEXT NULL;
+  ALTER TABLE highlights ADD COLUMN card_deck TEXT NOT NULL DEFAULT '';
+  ALTER TABLE links ADD COLUMN resurfaced_at TEXT NULL;
+  `,
 ];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

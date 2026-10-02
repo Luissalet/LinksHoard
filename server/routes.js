@@ -9,6 +9,8 @@ import { manifest, serviceWorker } from "./manifest.js";
 import { dataDir } from "./db.js";
 import * as watches from "./watches.js";
 import * as family from "./hoard-link.js";
+import { highlightsToCards } from "./cards.js";
+import { resurface, resurfaceSettings, setResurfaceSettings } from "./resurface.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe." });
 
@@ -112,6 +114,32 @@ export function installRoutes(app, { version, dataDirConfigured }) {
     return out ? res.json(out) : notFound(res);
   });
   app.delete("/api/highlights/:id", (req, res) => res.json({ ok: highlights.deleteHighlight(req.params.id) }));
+
+  // Highlights to Hypatia flashcards (through the hub). Always 200: `status` says what happened (ok, nothing_new, hub_down, …).
+  app.post("/api/highlights/:id/to-cards", async (req, res, next) => {
+    try { res.json(await highlightsToCards({ highlight_id: req.params.id, deck: req.body?.deck || undefined })); } catch (e) { next(e); }
+  });
+  app.post("/api/links/:id/cards", async (req, res, next) => {
+    try {
+      if (!links.getLink(req.params.id)) return notFound(res);
+      res.json(await highlightsToCards({ link_id: req.params.id, deck: req.body?.deck || undefined, resend: req.body?.resend === true }));
+    } catch (e) { next(e); }
+  });
+  app.post("/api/cards/from-highlights", async (req, res, next) => {
+    try {
+      const b = req.body || {};
+      res.json(await highlightsToCards({ link_id: b.link_id, since: b.since, deck: b.deck || undefined, resend: b.resend === true }));
+    } catch (e) { next(e); }
+  });
+
+  // "Para leer hoy"
+  app.get("/api/resurface", (req, res, next) => {
+    try { res.json(resurface(req.query.count ? Number(req.query.count) : resurfaceSettings().count)); } catch (e) { next(e); }
+  });
+  app.get("/api/settings", (req, res) => res.json({ resurface: resurfaceSettings() }));
+  app.post("/api/settings", (req, res, next) => {
+    try { res.json({ resurface: setResurfaceSettings(req.body?.resurface || {}) }); } catch (e) { next(e); }
+  });
 
   // Facets
   app.get("/api/tags", (req, res) => res.json(links.listTags()));

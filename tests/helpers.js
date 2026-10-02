@@ -5,6 +5,7 @@ import path from "node:path";
 import { createApp } from "../server/app.js";
 import { close } from "../server/db.js";
 import { drain } from "../server/fetcher.js";
+import { shutdownMedia } from "../server/media.js";
 
 export function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-"));
@@ -32,6 +33,7 @@ export async function bootServer(options = {}) {
     // Let any still-queued/in-flight background fetch finish and write its
     // result before the database goes away, or it would throw "Database not
     // initialised" from an unawaited async task after the test has ended.
+    await shutdownMedia(); // a download still running would write to a closed database
     await drain();
     await new Promise((resolve) => server.close(resolve));
     close();

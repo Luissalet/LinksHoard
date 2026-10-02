@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { useAction, ConfirmDialog } from "../components/ui.jsx";
-import { formatDate, kindLabel, readingTime } from "../format.js";
+import { formatDate, isMediaUrl, kindLabel, readingTime } from "../format.js";
 
 const FONT_SIZES = [15, 17, 19, 22];
 
@@ -97,6 +97,13 @@ export default function Reader({ linkId }) {
     const updated = await run(() => api.links.archive(linkId, !link.archived));
     if (updated) { setLink((l) => ({ ...l, archived: updated.archived })); refreshApp(); window.location.hash = "#/bandeja"; }
   };
+  const download = async () => {
+    const out = await run(() => api.media.start({ url: link.url_original || link.url, format: "auto", save_link: true }), null);
+    if (out) {
+      notify({ kind: "ok", text: out.existing ? "Esa descarga ya está en curso." : "Descarga en cola: sigue el progreso en Descargas." });
+      window.location.hash = "#/descargas";
+    }
+  };
   const refetch = async () => {
     await run(() => api.links.refetch(linkId), "Volviendo a descargar…");
     load();
@@ -117,6 +124,7 @@ export default function Reader({ linkId }) {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" className="btn btn-sm" onClick={toggleFavorite} disabled={busy}>{link.favorite ? "★ Favorito" : "☆ Marcar favorito"}</button>
           <button type="button" className="btn btn-sm" onClick={toggleArchive} disabled={busy}>{link.archived ? "Desarchivar" : "Archivar"}</button>
+          {(link.kind === "video" || link.kind === "audio" || isMediaUrl(link.url)) && <button type="button" className="btn btn-sm" onClick={download} disabled={busy}>⬇ Descargar</button>}
           {link.fetch_status === "failed" && <button type="button" className="btn btn-sm" onClick={refetch} disabled={busy}>Reintentar descarga</button>}
           <div className="ml-auto flex items-center gap-1">
             <span className="help text-[11px]">Tamaño de letra</span>

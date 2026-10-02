@@ -8,6 +8,7 @@ import * as highlights from "./highlights.js";
 import { enqueueFetch, waitForFetch } from "./fetcher.js";
 import { importTranscript } from "./transcript.js";
 import * as watches from "./watches.js";
+import * as media from "./media.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
 Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
@@ -18,7 +19,8 @@ For a saved YouTube video whose read_link text is empty or only metadata, import
 Favorite is a dedicated boolean state, not a tag: use mark_link with state "favorite". tag_link only changes labels, even if a label is named "favorita".
 Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
 delete_link is irreversible: confirm with the user before calling it.
-Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.`;
+Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
+When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe shows what a link holds (title, duration, available heights, playlist or photo post) without downloading. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
 
@@ -63,6 +65,35 @@ const tool = (name, description, schema, hints, run) => ({
   run,
 });
 const RO = { readOnlyHint: true, idempotentHint: true };
+
+/** What the assistant sees of a download: the facts it must report, with absolute paths. */
+function agentView(row, { started = false, existing, detail = false } = {}) {
+  const files = (row.files || []).map((f) => ({ path: f.path, name: f.name, size: f.size, kind: f.kind }));
+  const active = media.ACTIVE_STATUSES.includes(row.status);
+  const out = {
+    id: row.id,
+    ok: row.status === "done" && files.length > 0,
+    status: row.status,
+    platform: row.platform,
+    format: row.format,
+    kind: row.kind || undefined,
+    title: row.title || undefined,
+    uploader: row.uploader || undefined,
+    dir: row.dir,
+    files,
+    total_bytes: row.total_bytes || undefined,
+    link_id: row.link_id || undefined,
+    ...(active ? { progress: row.progress, speed: row.speed || undefined, eta: row.eta || undefined, detail: row.detail || undefined } : {}),
+    ...(row.status === "failed" || row.status === "cancelled" ? { error: row.error } : {}),
+    ...(row.status === "done" && row.detail ? { note: row.detail } : {}),
+    ...(existing ? { existing: true } : {}),
+  };
+  if (detail) Object.assign(out, { url: row.url, upload_date: row.upload_date || undefined, duration: row.duration || undefined, description: row.description ? row.description.slice(0, 1000) : undefined, created_at: row.created_at, finished_at: row.finished_at || undefined });
+  if (started || active) out.message = active ? "Sigue en curso: consulta media_status con este id; no digas que está descargado hasta que ok sea true." : undefined;
+  if (row.status === "done" && !files.length) out.message = "Terminó pero no hay archivos en el resultado: no lo des por descargado.";
+  return out;
+}
+
 
 export const TOOLS = [
   tool("save_link",
@@ -270,6 +301,88 @@ export const TOOLS = [
     "List every tag in use (excluding archived links) with counts, most used first.\nSinónimos: etiquetas, qué etiquetas tengo, lista de etiquetas",
     z.object({}), RO,
     () => ({ tags: links.listTags() })),
+  tool("media_download",
+    "Download a video, audio or photos from a link (YouTube, X, Instagram, TikTok…) — descargar, bájame\nDownloads the media behind a URL to disk with yt-dlp (video as H.264/AAC MP4, or audio as MP3) and gallery-dl (photo posts and carousels). format: auto (default: video, or the photos when the post has no video), video, audio or image. quality for video: best, 1080, 720, 480. Saves into the configured downloads folder (dir overrides it) and, with save_link (default true), also saves the URL to the library with the tag descarga and the caption. Waits up to timeout_s (default 150, under the assistant's 180 s call limit) and returns ok, status and the files with absolute path and size; if it is still running it returns the id so media_status can follow it. Never claim success unless ok is true and files is not empty.\nSinónimos: descárgame esto, descarga este vídeo, bájame, bájate, guarda el vídeo, sácame el audio, pásalo a mp3, descargar de YouTube, descargar reel, descargar tweet, bajar música, descargar fotos de Instagram, guardar el vídeo en el disco",
+    z.object({
+      url: z.string().trim().min(1).describe("Link to the video, audio or post"),
+      format: z.enum(media.FORMATS).default("auto"),
+      quality: z.union([z.enum(media.QUALITIES), z.number().int().min(144).max(4320)]).default("best").describe("Maximum video height: best, 1080, 720, 480…"),
+      dir: z.string().trim().max(1000).optional().describe("Absolute folder to save into (default: the configured downloads folder)"),
+      save_link: z.boolean().default(true).describe("Also save the URL in the library (tag descarga)"),
+      playlist: z.boolean().default(false).describe("Download a whole playlist (up to max_items) instead of the single video"),
+      max_items: z.number().int().min(1).max(500).default(media.DEFAULT_MAX_ITEMS),
+      cookies_browser: z.string().trim().max(60).optional().describe("Browser whose login cookies to use (firefox, chrome, edge, brave…); default tries without, then each browser"),
+      wait: z.boolean().default(true).describe("Wait for the download to finish"),
+      timeout_s: z.number().int().min(5).max(3600).default(150).describe("Seconds to wait; past it the download keeps running and media_status follows it"),
+    }), { openWorldHint: true },
+    async (a) => {
+      const started = media.startDownload({
+        url: a.url, format: a.format, quality: String(a.quality), dir: a.dir, save_link: a.save_link,
+        playlist: a.playlist, max_items: a.max_items, cookies_browser: a.cookies_browser || "auto",
+      });
+      if (!a.wait) return agentView(started, { started: true, existing: started.existing });
+      const done = await media.waitForDownload(started.id, a.timeout_s * 1000);
+      return agentView(done, { existing: started.existing });
+    }),
+
+  tool("media_status",
+    "Progress and result of media downloads — estado de las descargas, cómo va la descarga\nWith id: that download's status, progress, speed, eta and, when done, its files (absolute paths); wait_s (up to 150) blocks until it finishes or the time runs out. Without id: the most recent downloads (status filter: queued, downloading, processing, done, failed, cancelled, active or finished).\nSinónimos: cómo va la descarga, estado de la descarga, qué he descargado, descargas en curso, dónde se guardó, lista de descargas, ruta del archivo descargado",
+    z.object({
+      id: z.string().optional(),
+      status: z.string().max(20).optional(),
+      limit: z.number().int().min(1).max(100).default(10),
+      wait_s: z.number().int().min(0).max(150).default(0).describe("With id: wait up to this many seconds for the download to finish"),
+    }), RO,
+    async (a) => {
+      if (a.id) {
+        if (a.wait_s > 0 && media.getDownload(a.id)) await media.waitForDownload(a.id, a.wait_s * 1000);
+        const row = media.getDownload(a.id);
+        if (!row) fail(`No existe una descarga con id "${a.id}".`);
+        return agentView(row, { detail: true });
+      }
+      const out = media.listDownloads({ status: a.status, limit: a.limit });
+      return { total: out.total, items: out.items.map((r) => agentView(r)) };
+    }),
+
+  tool("media_cancel",
+    "Cancel a queued or running media download — cancelar descarga, parar la descarga\nA waiting download is removed from the queue; the running one is stopped and its whole process tree killed. Partial files are cleaned up.\nSinónimos: cancela la descarga, para la descarga, detén la descarga, no la descargues, abortar descarga",
+    z.object({ id: z.string() }), { idempotentHint: true },
+    (a) => agentView(media.cancelDownload(a.id))),
+
+  tool("media_retry",
+    "Retry a failed or cancelled media download — reintentar descarga, volver a descargar\nPuts the same download back in the queue (same url, format, quality and folder) and, with wait (default true), waits for the result like media_download.\nSinónimos: reintenta la descarga, vuelve a descargarlo, inténtalo otra vez, descargar de nuevo",
+    z.object({ id: z.string(), wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(3600).default(150) }), { openWorldHint: true },
+    async (a) => {
+      const row = media.retryDownload(a.id);
+      if (!a.wait) return agentView(row);
+      return agentView(await media.waitForDownload(row.id, a.timeout_s * 1000));
+    }),
+
+  tool("media_probe",
+    "Inspect a link before downloading (title, duration, qualities) — comprobar enlace, ver formatos\nAsks yt-dlp (or gallery-dl for photo posts) what is behind a URL without downloading: title, uploader, duration, available video heights, whether it is a playlist or a photo post. Needs the network.\nSinónimos: qué hay en este enlace, es un vídeo o fotos, qué calidades tiene, cuánto dura, ver información del vídeo, comprobar si se puede descargar",
+    z.object({
+      url: z.string().trim().min(1),
+      playlist: z.boolean().default(false),
+      cookies_browser: z.string().trim().max(60).optional(),
+    }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => media.probeUrl({ url: a.url, playlist: a.playlist, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_tools",
+    "Show or update yt-dlp, gallery-dl and ffmpeg — herramientas de descarga, actualizar yt-dlp\nReports which of yt-dlp, gallery-dl and ffmpeg were found (path, version and how: env, PATH, sibling app folder, python module), the downloads folder and the install command when something is missing. update: true runs the updaters (yt-dlp -U or pip install -U) and returns the versions before and after.\nSinónimos: tengo yt-dlp, está instalado ffmpeg, actualizar yt-dlp, por qué no descarga, instalar el descargador, versión de yt-dlp, herramientas de descarga",
+    z.object({ update: z.boolean().default(false), tools: z.array(z.enum(["ytdlp", "gallerydl"])).optional() }), { openWorldHint: true },
+    async (a) => {
+      const update = a.update ? await media.updateTools(a.tools?.length ? { tools: a.tools } : {}) : undefined;
+      const status = await media.toolsStatus({ refresh: !!a.update });
+      return { ...status, settings: media.getMediaSettings(), ...(update ? { update: update.results } : {}) };
+    }),
+
+  tool("media_delete",
+    "Remove a download record, optionally its files — borrar descarga, quitar archivo descargado\nRemoves the record from the downloads list. With delete_files: true AND confirm: true it also deletes the downloaded files from the disk (permanent, there is no recycle bin): confirm with the user first. A running download must be cancelled first.\nSinónimos: borra la descarga, elimina el archivo descargado, quita de la lista de descargas, borrar el vídeo descargado",
+    z.object({ id: z.string(), delete_files: z.boolean().default(false), confirm: z.boolean().default(false) }), { destructiveHint: true },
+    (a) => {
+      if (a.delete_files && !a.confirm) fail("Borrar los archivos es permanente: confirma con el usuario y vuelve a llamar con confirm: true.");
+      return media.removeDownload(a.id, { deleteFiles: a.delete_files });
+    }),
 ];
 
 export function findTool(name) {

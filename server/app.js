@@ -10,6 +10,8 @@ import { installRoutes } from "./routes.js";
 import { installAgentRoutes, writeToken } from "./agent-routes.js";
 import * as family from "./hoard-link.js";
 import { startScheduler } from "./watches.js";
+import { installMediaRoutes } from "./media-routes.js";
+import { initMedia } from "./media.js";
 import { createGuard } from "./guard.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,12 +32,15 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   family.configure({ app: "links", dataDir });
   // Watches are checked every minute for the ones whose interval has passed (LINKS_WATCHES=0 turns it off).
   if (process.env.LINKS_WATCHES !== "0") startScheduler();
+  // Media downloads: fix rows left by a previous run and re-queue the ones that never started.
+  initMedia();
 
   const app = express();
   app.disable("x-powered-by");
   app.use(createGuard(allowedHosts));
   app.use(express.json({ limit: "10mb" }));
   installRoutes(app, { version, dataDirConfigured });
+  installMediaRoutes(app);
   installAgentRoutes(app, { token });
   app.all(/^\/api(\/.*)?$/, (req, res) => res.status(404).json({ error: "Ruta no encontrada." }));
 

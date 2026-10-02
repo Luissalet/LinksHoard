@@ -181,7 +181,8 @@ Escritorio: rejilla `224px | 1fr`; índice pegado arriba a `100dvh` con etiqueta
 - **Bandeja / Todo:** caja de guardado arriba, buscador, filtro de sitio, lista de filas de una línea con acciones a la derecha (favorito, archivar).
 - **Archivados / Favoritos:** misma lista sin caja de guardado.
 - **Lector:** cabecera con título, sitio, autor, fecha y tiempo de lectura; controles de tamaño de letra; texto; subrayados con nota; etiquetas; notas libres.
-- **Ajustes:** bookmarklet arrastrable, instrucciones de instalación PWA, formulario de importación, datos.
+- **Descargas:** formulario (enlace, formato, calidad, «Guardar también en la biblioteca»), cola con una fila por descarga (chip de plataforma, estado escrito, barra de progreso con velocidad y tiempo restante, archivos, reproductor en el sitio, acciones) y la tarjeta «Herramientas» (yt-dlp, gallery-dl y ffmpeg con su versión y «Actualizar»). Va después de Vigía.
+- **Ajustes:** bookmarklet arrastrable, instrucciones de instalación PWA, formulario de importación, carpeta de descargas y archivo de cookies, datos.
 
 Hasta `768px` el índice pasa a barra superior desplazable, la caja de guardado a una columna y las filas conservan chip de sitio, título y metadatos apilados; las acciones permanecen accesibles a la derecha.
 
@@ -212,6 +213,10 @@ Columna de máximo `68ch`, tamaño de letra con cuatro pasos. Seleccionar texto 
 ### Save box
 
 Formulario de una fila (URL + etiquetas + botón «Guardar»). Guardar es inmediato: la fila aparece con chip «Descargando…» y se actualiza sola en segundo plano sin recargar la página.
+
+### Download rows
+
+Una fila por descarga, separada por línea: chips de plataforma, estado y tipo, título, autor, duración, tamaño y fecha, y a la derecha las acciones (Reproducir, Mostrar en carpeta, Cancelar, Reintentar, Quitar, Borrar archivos). Mientras corre muestra una barra de 6px con el texto «Descargando… 42 % · 3,1 MB/s · quedan 00:12»; un fallo se escribe en rojo con el motivo y qué hacer. El reproductor (`<video>`, `<audio>` o `<img>`) se abre bajo la fila.
 
 ### Feedback
 

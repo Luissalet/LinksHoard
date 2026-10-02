@@ -86,6 +86,42 @@ const MIGRATIONS = [
   CREATE INDEX watch_items_seen ON watch_items(seen_at);
   CREATE INDEX watch_items_watch ON watch_items(watch_id, seen_at);
   `,
+  // 3: media downloads — video, audio and photos pulled to disk with yt-dlp / gallery-dl (see media.js)
+  `
+  CREATE TABLE media_downloads (
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT '',
+    format TEXT NOT NULL DEFAULT 'auto',
+    quality TEXT NOT NULL DEFAULT 'best',
+    kind TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'queued',
+    progress REAL NOT NULL DEFAULT 0,
+    speed TEXT NOT NULL DEFAULT '',
+    eta TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    uploader TEXT NOT NULL DEFAULT '',
+    upload_date TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    duration REAL NULL,
+    dir TEXT NOT NULL DEFAULT '',
+    files TEXT NOT NULL DEFAULT '[]',
+    total_bytes INTEGER NOT NULL DEFAULT 0,
+    save_link INTEGER NOT NULL DEFAULT 1,
+    playlist INTEGER NOT NULL DEFAULT 0,
+    max_items INTEGER NOT NULL DEFAULT 50,
+    link_id TEXT NULL,
+    error TEXT NOT NULL DEFAULT '',
+    cookies_request TEXT NOT NULL DEFAULT '',
+    cookies_browser TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    started_at TEXT NULL,
+    finished_at TEXT NULL
+  );
+  CREATE INDEX media_downloads_created ON media_downloads(created_at);
+  CREATE INDEX media_downloads_status ON media_downloads(status);
+  `,
 ];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

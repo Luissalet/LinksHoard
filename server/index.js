@@ -4,6 +4,7 @@ import { createApp, resolveDataDir } from "./app.js";
 import { findAvailablePort, validPort } from "./port.js";
 import { stop as stopFetcher } from "./fetcher.js";
 import { stopScheduler } from "./watches.js";
+import { shutdownMedia } from "./media.js";
 import { close as closeDb } from "./db.js";
 
 const PREFERRED_PORT = validPort(process.env.LINKS_PORT || process.env.PORT, 5181);
@@ -29,9 +30,10 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`Cerrando Links Hoard (${signal})…`);
-  const forceExit = setTimeout(() => process.exit(0), 5000);
+  const forceExit = setTimeout(() => process.exit(0), 15000);
   forceExit.unref();
   stopScheduler();
+  await shutdownMedia();
   await stopFetcher();
   await new Promise((resolve) => server.close(resolve));
   closeDb();

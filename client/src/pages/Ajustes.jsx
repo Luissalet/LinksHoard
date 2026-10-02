@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Page, Section, Field, useAction } from "../components/ui.jsx";
@@ -17,6 +17,19 @@ export default function Ajustes() {
   const [run, busy] = useAction(notify);
 
   const origin = window.location.origin;
+
+  const [media, setMedia] = useState(null);
+  const [mediaDir, setMediaDir] = useState("");
+  const [cookiesFile, setCookiesFile] = useState("");
+  const [autoUpdate, setAutoUpdate] = useState(true);
+  useEffect(() => {
+    api.media.settings().then((s) => { setMedia(s); setMediaDir(s.dir_is_default ? "" : s.dir); setCookiesFile(s.cookies_file || ""); setAutoUpdate(s.auto_update !== false); }).catch(() => {});
+  }, []);
+  const saveMedia = async (e) => {
+    e.preventDefault();
+    const out = await run(() => api.media.saveSettings({ dir: mediaDir.trim(), cookies_file: cookiesFile.trim(), auto_update: autoUpdate }), "Ajustes de descargas guardados.");
+    if (out) { setMedia(out); setMediaDir(out.dir_is_default ? "" : out.dir); }
+  };
 
   const runImport = async (e) => {
     e.preventDefault();
@@ -60,6 +73,25 @@ export default function Ajustes() {
         {result && (
           <p className="help mt-3">Encontrados: {result.found} · Añadidos: {result.added} · Ya existían: {result.skipped}</p>
         )}
+      </Section>
+
+      <Section title="Descargas" className="mt-4">
+        <form onSubmit={saveMedia} className="grid gap-3">
+          <Field label="Carpeta de descargas" help={media ? `Vacío = la carpeta por defecto (${media.default_dir}). Ruta absoluta; se crea si no existe.` : "Ruta absoluta; se crea si no existe."}>
+            <input className="field" value={mediaDir} onChange={(e) => setMediaDir(e.target.value)} placeholder={media?.default_dir || "C:\\Users\\tu-usuario\\Downloads\\Links Hoard"} />
+          </Field>
+          <Field label="Archivo de cookies (opcional)" help="Para contenido privado de Instagram o X. Si lo dejas vacío se prueba sin cookies y después con las de Firefox, Chrome, Edge, Brave…">
+            <input className="field" value={cookiesFile} onChange={(e) => setCookiesFile(e.target.value)} placeholder="C:\\Users\\tu-usuario\\cookies.txt" />
+          </Field>
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={autoUpdate} onChange={(e) => setAutoUpdate(e.target.checked)} />
+            Mantener yt-dlp al día solo (antes de descargar si tiene más de 45 días, y cuando una descarga falla como si estuviera desactualizado; como mucho una vez cada 6 horas)
+          </label>
+          {media?.last_auto_update && (
+            <p className="help">Última actualización automática: {new Date(media.last_auto_update.at).toLocaleString("es-ES")} — {media.last_auto_update.ok ? `${media.last_auto_update.before} → ${media.last_auto_update.after}` : `falló: ${media.last_auto_update.error || "sin detalle"}`}</p>
+          )}
+          <div><button type="submit" className="btn btn-primary" disabled={busy}>Guardar</button></div>
+        </form>
       </Section>
 
       <Section title="Datos" className="mt-4">

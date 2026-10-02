@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { TOOLS, AGENT_INSTRUCTIONS } from "./agent-tools.js";
+import { callTimeoutMs, postJson } from "./bridge-call.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const { version } = createRequire(import.meta.url)("../package.json");
@@ -23,26 +24,29 @@ for (const tool of TOOLS)
   server.registerTool(
     tool.name,
     { description: tool.description, inputSchema: tool.schema, annotations: tool.annotations },
-    async (args) => {
+    async (args, extra) => {
+      // Long calls send a heartbeat so clients that reset their timeout on progress keep waiting.
+      const progressToken = extra?._meta?.progressToken;
+      let beats = 0;
+      const heartbeat = progressToken === undefined || callTimeoutMs(tool.name, args) <= 90_000 ? null : setInterval(() => {
+        extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++beats, message: "Sigue en curso…" } }).catch(() => {});
+      }, 10_000);
       try {
         const token = process.env.LINKS_TOKEN || fs.readFileSync(tokenFile, "utf8").trim();
-        const response = await fetch(new URL("/api/agent/call", base), {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: tool.name, arguments: args }),
-          signal: AbortSignal.timeout(90000),
-        });
-        const body = await response.json();
+        const response = await postJson(base, "/api/agent/call", { name: tool.name, arguments: args }, { token, timeoutMs: callTimeoutMs(tool.name, args) });
+        const body = response.body || {};
         if (!response.ok) throw Error(body.error || `Error ${response.status}`);
         return { content: [{ type: "text", text: JSON.stringify(body) }] };
       } catch (e) {
-        const offline = e.code === "ENOENT" || e.message === "fetch failed";
+        const offline = e.code === "ENOENT" || e.code === "ECONNREFUSED" || e.message === "fetch failed";
         return {
           isError: true,
           content: [{ type: "text", text: JSON.stringify({
             error: offline ? "Abre Links Hoard (npm start) para acceder a tus datos." : e.message,
           }) }],
         };
+      } finally {
+        if (heartbeat) clearInterval(heartbeat);
       }
     },
   );

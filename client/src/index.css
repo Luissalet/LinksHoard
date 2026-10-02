@@ -89,8 +89,13 @@ select.field { appearance: auto; }
 .chip-accent { background: var(--unread-bg); color: var(--unread-ink); }
 .chip-favorite { background: var(--favorite-bg); color: var(--favorite-ink); }
 .chip-danger { background: var(--danger-bg); color: var(--danger-ink); }
+.chip-ok { background: color-mix(in srgb, var(--hoard-success) 18%, transparent); color: color-mix(in srgb, var(--hoard-success) 60%, white); }
 .chip-warn { background: var(--warn-bg); color: var(--warn-ink); }
 
+.progress { height: 6px; border-radius: 999px; background: var(--hoard-sunken); overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--hoard-accent); border-radius: 999px; transition: width 0.4s ease; }
+.progress-indeterminate > span { width: 35% !important; animation: progress-slide 1.2s ease-in-out infinite alternate; }
+@keyframes progress-slide { from { margin-left: 0; } to { margin-left: 65%; } }
 .site-chip { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
 
 .nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-radius: 7px; color: var(--ink); text-decoration: none; font-weight: 500; }

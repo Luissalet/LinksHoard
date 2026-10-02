@@ -4,6 +4,7 @@
 import path from "node:path";
 import crypto from "node:crypto";
 import { openDatabase } from "./hoard-commons/server.js";
+import { normalizeUrl, siteOf } from "./url.js";
 
 export const DB_FILE = "links-hoard.db";
 
@@ -141,6 +142,22 @@ const MIGRATIONS = [
   ALTER TABLE watches ADD COLUMN last_etag TEXT NOT NULL DEFAULT '';
   ALTER TABLE watches ADD COLUMN last_modified TEXT NOT NULL DEFAULT '';
   `,
+  // 7: the shared URL rules and the shared page comparison. Saved links are re-keyed with the shared normalizeUrl (from the URL as it was
+  // saved; a key already taken by another link is left alone), and a watch that was compared with the old text extractor starts over
+  // silently: its first check afterwards is a new baseline, not a "change".
+  (raw) => {
+    raw.exec("ALTER TABLE watches ADD COLUMN check_engine INTEGER NOT NULL DEFAULT 0");
+    const rows = raw.prepare("SELECT id, url, url_original FROM links").all();
+    const taken = new Set(rows.map((r) => r.url));
+    const update = raw.prepare("UPDATE links SET url = ?, site = ? WHERE id = ?");
+    for (const r of rows) {
+      const next = normalizeUrl(r.url_original) || normalizeUrl(r.url);
+      if (!next || next === r.url || taken.has(next)) continue;
+      taken.delete(r.url);
+      taken.add(next);
+      update.run(next, siteOf(next), r.id);
+    }
+  },
 ];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

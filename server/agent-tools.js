@@ -11,6 +11,7 @@ import * as watches from "./watches.js";
 import * as media from "./media.js";
 import { highlightsToCards, DEFAULT_DECK } from "./cards.js";
 import { resurface, resurfaceSettings } from "./resurface.js";
+import { readingPlan, readingPlanInput } from "./reading-plan.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
 Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
@@ -22,6 +23,7 @@ Favorite is a dedicated boolean state, not a tag: use mark_link with state "favo
 Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
 delete_link is irreversible: confirm with the user before calling it.
 highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "Lecturas") through the hub; report the status it returns, and say plainly when the hub or Hypatia is not there. resurface answers "what should I read today": quote the title, site and reason of each item and open nothing without being asked.
+reading_plan selects complete unread saved texts for the user's available minutes and assumed reading speed. Report estimates, not guaranteed duration. It never fetches pages, marks links read or changes the daily resurfacing list; use read_link before summarizing any selected text.
 Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
 When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.`;
 
@@ -317,6 +319,11 @@ export const TOOLS = [
     "What to read today from the saved-but-unread — para leer hoy, rescata enlaces\nPicks count links (default 3) worth reading now: unread for a while (older first), favourites, ones with highlights and topics the user reads weigh more; a read link with highlights comes back for a re-read after two weeks. Never the same link twice within 14 days (30 for a re-read). The list is the same all day and changes tomorrow; each item says why (reason).\nSinónimos: qué leo hoy, algo para leer, rescatar enlaces, lecturas pendientes, qué tengo sin leer, recomiéndame un artículo",
     z.object({ count: z.number().int().min(1).max(10).optional() }), { idempotentHint: true },
     (a) => resurface(a.count ?? resurfaceSettings().count)),
+
+  tool("reading_plan",
+    "Plan saved unread texts within your reading time — lecturas que caben en tus minutos\nUses known word counts and an assumed speed (default 200 words/minute), rounding each complete text up to a minute. Selects the fullest estimated budget up to max_items; ties favour favourites, fewer texts and older entries. Optional exact tag and site filters. Returns selected links, estimated/unused minutes and exclusions for missing text/counts or unsupported kinds. Does not fetch, mark read, reserve links or change daily resurfacing.\nSinónimos: tengo veinte minutos, plan de lectura, lecturas cortas, qué puedo leer en diez minutos, tiempo para leer, reading time budget",
+    readingPlanInput, RO,
+    (a) => readingPlan(a)),
 
   tool("list_tags",
     "List every tag in use (excluding archived links) with counts, most used first.\nSinónimos: etiquetas, qué etiquetas tengo, lista de etiquetas",

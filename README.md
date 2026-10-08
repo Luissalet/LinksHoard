@@ -47,6 +47,7 @@ The server binds 127.0.0.1 and only answers requests whose `Host` is `localhost`
 
 - **Save instantly.** Paste a URL (or use the bookmarklet, the browser share sheet once installed as a PWA, or an assistant's `save_link` tool) and it is stored right away with `fetch_status: pending`. A background queue (2 at a time) downloads the page, extracts the article with Readability and fills in title, byline, excerpt and full text — the row updates itself, no reload needed.
 - **Read cleanly.** The reader shows the extracted text at an adjustable font size, with the original URL, site, author and reading time. Select any text to highlight it, with an optional note.
+- **Read within your available time.** Ask Faustus for a `reading_plan` with a minute budget, assumed reading speed and optional tag/site filters. It combines complete unread saved texts that fit, reports estimated and unused minutes, and leaves the library and daily picks unchanged. See [Reading plans](docs/READING_PLAN.md).
 - **Organize.** Tags, favorites, archive, read/unread. Sidebar shows tag counts; the list can filter by site too.
 - **Search everything.** Full-text search (SQLite FTS5) over title, description, extracted text, notes and tags. If the runtime's SQLite build lacks FTS5 the app falls back to a plain `LIKE` search automatically and says so in Ajustes.
 - **Import in bulk.** Netscape bookmarks HTML (what every browser exports) or a plain list of URLs, one per line. Both dedupe against what you already have.
@@ -115,7 +116,7 @@ Tools:
 | `read_link` | Read the extracted text, paginated by characters; includes highlights. |
 | `import_video_transcript` | Import available captions from a saved YouTube video for reading, search and quotes. Uses the same caption path as `media_subtitles` (yt-dlp, found like the download tools); does not download the video. |
 | `tag_link` | Add/remove tags. |
-| `mark_link` | Toggle read/unread/archived/favorite. |
+| `mark_link` | Set read/unread/archived/favorite. Repeating read status preserves the original reading date. |
 | `add_highlight` | Save a highlighted quote with a note. |
 | `link_digest` | What was saved since a date, grouped by site. |
 | `refetch_link` | Re-download and re-extract. |
@@ -128,6 +129,7 @@ Tools:
 | `watch_remove` | Stop following (items and saved links stay). |
 | `highlights_to_cards` | Send highlights (of a link, or all not yet sent / since a date) to Hypatia as flashcards in the deck "Lecturas" (`link_id`, `url`, `since`, `deck`, `resend`); reports `status` (`ok`, `nothing_new`, `hub_down`, `hypatia_unavailable`, `hypatia_error`, `unknown_link`). |
 | `resurface` | What to read today from the saved-but-unread (`count`, default 3); the same list all day, never the same link twice in 14 days. |
+| `reading_plan` | Choose complete unread texts for `minutes`, with `words_per_minute` (default 200), `max_items` (default 5), optional `tag` / `site`; estimates only, no state changes. |
 | `list_tags` | Every tag in use, with counts. |
 | `media_download` | Download the video, audio or photos behind a link; waits and returns the files with absolute paths and sizes (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). |
 | `media_status` | Progress and result of one download or the recent list. |

@@ -57,6 +57,8 @@ El servidor escucha en 127.0.0.1 y solo responde a peticiones cuyo `Host` sea `l
 - **Para leer hoy.** La Bandeja se abre con unos pocos enlaces guardados hace tiempo (3 por defecto, de 1 a 10 en Ajustes), y `resurface {count}` responde la misma lista. Candidatos: sin leer desde hace al menos 2 días (primero los más antiguos; pesan más los favoritos, los subrayados y los temas que de verdad lees), y los enlaces leídos hace dos semanas que tienen subrayados, para releerlos; nunca descargas, archivados ni enlaces sin descargar. El mismo enlace no se ofrece dos veces en 14 días (30 si es para releer); la lista del día se guarda, así que no cambia hasta mañana (un enlace que lees sale de ella). Una vez al día, a partir de las 08:00 locales, un evento `digest.item` («Para leer hoy (3): …») va al hub para el resumen de la familia, solo si hay algo que leer y solo se da por enviado cuando el hub lo recogió. `LINKS_RESURFACE=0` o el interruptor de Ajustes apaga la línea diaria.
 - **Instálala como app.** `manifest.webmanifest` declara un `share_target`: una vez instalada en Android, puedes compartir una página desde cualquier app directamente a Links Hoard.
 
+- **Leer en el tiempo que tienes.** Pide a Faustus un `reading_plan` con minutos disponibles, ritmo de lectura y filtros opcionales de etiqueta o sitio. Combina textos completos guardados sin leer que quepan, indica minutos estimados y sobrantes y conserva la biblioteca y las elecciones diarias. [Planes de lectura](docs/READING_PLAN.md).
+
 ## Descargas
 
 La página **Descargas** (`#/descargas`) y la herramienta `media_download` convierten un enlace en archivos de tu disco. El vídeo y el audio pasan por [yt-dlp](https://github.com/yt-dlp/yt-dlp); las publicaciones de fotos y los carruseles que yt-dlp no puede coger («There is no video in this post») por [gallery-dl](https://github.com/mikf/gallery-dl). Son programas aparte: la aplicación no los incluye.
@@ -115,7 +117,7 @@ Herramientas:
 | `read_link` | Leer el texto extraído, paginado por caracteres; incluye subrayados. |
 | `import_video_transcript` | Importar subtítulos disponibles de un vídeo de YouTube guardado para leerlos, buscarlos y citarlos. Usa el mismo camino de subtítulos que `media_subtitles` (yt-dlp, buscado como las herramientas de descarga); no descarga el vídeo. |
 | `tag_link` | Añadir/quitar etiquetas. |
-| `mark_link` | Alternar leído/no leído/archivado/favorito. |
+| `mark_link` | Cambiar leído/no leído/archivado/favorito; repetir el mismo estado de lectura conserva la fecha original. |
 | `add_highlight` | Guardar una cita subrayada con nota. |
 | `link_digest` | Lo guardado desde una fecha, agrupado por sitio. |
 | `refetch_link` | Volver a descargar y extraer. |
@@ -128,6 +130,7 @@ Herramientas:
 | `watch_remove` | Dejar de seguir (las novedades y los enlaces guardados se quedan). |
 | `highlights_to_cards` | Enviar subrayados (de un enlace, o todos los no enviados / desde una fecha) a Hypatia como tarjetas en el mazo «Lecturas» (`link_id`, `url`, `since`, `deck`, `resend`); informa de `status` (`ok`, `nothing_new`, `hub_down`, `hypatia_unavailable`, `hypatia_error`, `unknown_link`). |
 | `resurface` | Qué leer hoy entre lo guardado sin leer (`count`, 3 por defecto); la misma lista todo el día, nunca el mismo enlace dos veces en 14 días. |
+| `reading_plan` | Textos completos sin leer para `minutes`, con `words_per_minute` (200 por defecto), `max_items` (5), filtros opcionales `tag` / `site`; estimaciones sin cambiar estado. |
 | `list_tags` | Todas las etiquetas en uso, con recuento. |
 | `media_download` | Descargar el vídeo, el audio o las fotos de un enlace; espera y devuelve los archivos con ruta absoluta y tamaño (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). |
 | `media_status` | Progreso y resultado de una descarga o la lista reciente. |

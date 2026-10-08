@@ -109,6 +109,9 @@ export function deleteLink(id) {
 export function markRead(id, read) {
   const current = getLink(id);
   if (!current) return null;
+  // Repeating the same state must not reset the original reading date,
+  // which resurfacing uses to decide when a re-read is due.
+  if (!!current.read_at === !!read) return current;
   db().prepare("UPDATE links SET read_at = ? WHERE id = ?").run(read ? now() : null, id);
   return getLink(id);
 }

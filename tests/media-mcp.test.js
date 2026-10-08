@@ -3,6 +3,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -83,5 +84,11 @@ test("the bridge waits as long as the call asks for, and says when the app is cl
   const unauthorised = await postJson(s.base, "/api/agent/call", { name: "list_links", arguments: {} }, { token: "nope" });
   assert.equal(unauthorised.status, 401);
   assert.equal(unauthorised.ok, false);
-  await assert.rejects(postJson("http://127.0.0.1:1", "/api/agent/call", {}), (e) => e.code === "ECONNREFUSED");
+  // A port nobody listens on: take a free one and release it (port 1 may be taken by whatever runs on this machine).
+  const closedPort = await new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+  });
+  await assert.rejects(postJson(`http://127.0.0.1:${closedPort}`, "/api/agent/call", {}), (e) => e.code === "ECONNREFUSED");
 });

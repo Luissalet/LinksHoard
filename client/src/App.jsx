@@ -61,7 +61,8 @@ export default function App() {
   const notify = useCallback((message) => setToast(message), []);
   const value = useMemo(() => ({ ...(state || {}), ready: !!state, refresh, notify }), [state, refresh, notify]);
 
-  const readerMatch = route.match(/^link\/(.+)$/);
+  const readerMatch = route.match(/^link\/([^?]+)(?:\?(.*))?$/);
+  const readerQuery = new URLSearchParams(readerMatch?.[2] || "");
   const page = PAGES.find((p) => p.path === route) || PAGES[0];
   const Component = readerMatch ? Reader : page.component;
   const activePath = readerMatch ? null : page.path;
@@ -103,7 +104,7 @@ export default function App() {
               No se pudo cargar el estado: {error}. <button type="button" className="btn-link" onClick={refresh}>Reintentar</button>
             </div>
           )}
-          {state ? <Component key={route} linkId={readerMatch?.[1]} /> : !error && <p className="help p-8">Cargando…</p>}
+          {state ? <Component key={readerMatch?.[1] || route} linkId={readerMatch?.[1]} paragraphId={readerQuery.get("paragraph")} sourceVersion={readerQuery.get("version")} /> : !error && <p className="help p-8">Cargando…</p>}
         </main>
       </div>
       <Toast message={toast} onClose={() => setToast(null)} />

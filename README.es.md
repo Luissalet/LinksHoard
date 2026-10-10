@@ -4,6 +4,16 @@ Bandeja de lectura local: guarda una URL, obtén el texto del artículo extraíd
 
 English version: [`README.md`](README.md).
 
+## Preguntar a un artículo guardado
+
+El formulario **Preguntar al artículo** del lector responde mediante el modelo
+del Hub con citas literales y enlaces a los párrafos de origen. Al pulsarlos,
+el párrafo se resalta y recibe el foco. MCP ofrece lo mismo con `ask_link` y
+`read_link_paragraphs`. Se informa de texto parcial, modelos no disponibles,
+citas inválidas y cambios del artículo. La cita comprobada acredita su origen,
+no la interpretación; preguntas y respuestas son temporales y no editan la
+biblioteca. Consulta [el contrato de API/MCP y los límites](docs/ARTICLE_QUESTIONS.md).
+
 ## Abrir
 
 Necesita Node.js 22.13 o posterior (usa el `node:sqlite` integrado). Sin módulos nativos ni Docker.
@@ -115,6 +125,8 @@ Herramientas:
 | `list_links` | Listar por estado (no leído/leído/archivado/todo), etiqueta, sitio, desde. |
 | `search_links` | Búsqueda de texto completo. |
 | `read_link` | Leer el texto extraído, paginado por caracteres; incluye subrayados. |
+| `read_link_paragraphs` | Párrafos completos paginados por índice, con enlaces al lector y versión del texto. |
+| `ask_link` | Preguntar al modelo del Hub sobre el texto guardado; frases con citas comprobadas y enlaces al párrafo. |
 | `import_video_transcript` | Importar subtítulos disponibles de un vídeo de YouTube guardado para leerlos, buscarlos y citarlos. Usa el mismo camino de subtítulos que `media_subtitles` (yt-dlp, buscado como las herramientas de descarga); no descarga el vídeo. |
 | `tag_link` | Añadir/quitar etiquetas. |
 | `mark_link` | Cambiar leído/no leído/archivado/favorito; repetir el mismo estado de lectura conserva la fecha original. |

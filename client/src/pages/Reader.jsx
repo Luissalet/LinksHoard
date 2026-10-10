@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { useAction, ConfirmDialog } from "../components/ui.jsx";
 import VideoInsight from "../components/VideoInsight.jsx";
+import ArticleQuestions from "../components/ArticleQuestions.jsx";
 import { formatDate, isMediaUrl, kindLabel, readingTime } from "../format.js";
 
 const FONT_SIZES = [15, 17, 19, 22];
@@ -20,7 +21,7 @@ function HighlightPopover({ rect, onSave, onClose }) {
   );
 }
 
-export default function Reader({ linkId }) {
+export default function Reader({ linkId, paragraphId, sourceVersion }) {
   const { notify, refresh: refreshApp } = useApp();
   const [link, setLink] = useState(null);
   const [highlights, setHighlights] = useState([]);
@@ -31,6 +32,21 @@ export default function Reader({ linkId }) {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [run, busy] = useAction(notify);
   const textRef = useRef(null);
+  const [activeParagraph, setActiveParagraph] = useState(null);
+
+  const focusParagraph = useCallback((id, version) => {
+    setActiveParagraph(null);
+    if (!id || !link?.article_source) return;
+    if (version !== link.article_source.version || !link.article_source.paragraphs.some((p) => p.id === id)) {
+      notify({ kind: "error", text: "Esta cita pertenece a otra versión del artículo. Vuelve a preguntar sobre el texto actual." });
+      return;
+    }
+    setActiveParagraph(id);
+    const element = document.getElementById(id);
+    element?.focus({ preventScroll: true });
+    element?.scrollIntoView({ block: "center", behavior: "instant" });
+  }, [link?.article_source, notify]);
+  useEffect(() => { focusParagraph(paragraphId, sourceVersion); }, [paragraphId, sourceVersion, focusParagraph]);
 
   const load = useCallback(async () => {
     const data = await api.links.get(linkId);
@@ -161,7 +177,16 @@ export default function Reader({ linkId }) {
       )}
 
       {link.content_text ? (
-        <div ref={textRef} className="reader-text" style={{ fontSize: FONT_SIZES[fontIdx] }}>{link.content_text}</div>
+        <>
+          <ArticleQuestions key={`${linkId}:${link.article_source.version}`} link={link} onReload={load} onCitation={focusParagraph} />
+          <div ref={textRef} className="reader-text" style={{ fontSize: FONT_SIZES[fontIdx] }}>
+            {link.article_source.paragraphs.map((p, i, paragraphs) => <React.Fragment key={p.id}>
+              {link.content_text.slice(i ? paragraphs[i - 1].end : 0, p.start)}
+              <span id={p.id} tabIndex={-1} className={activeParagraph === p.id ? "reader-paragraph reader-paragraph-active" : "reader-paragraph"}>{p.text}</span>
+            </React.Fragment>)}
+            {link.content_text.slice(link.article_source.paragraphs.at(-1)?.end || 0)}
+          </div>
+        </>
       ) : link.fetch_status === "ok" ? (
         <p className="help">No se pudo extraer texto legible de esta página. Ábrela en el sitio original.</p>
       ) : null}

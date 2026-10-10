@@ -4,6 +4,16 @@ Local-first read-later bookmark library: save a URL, get the extracted article t
 
 Spanish version: [`README.es.md`](README.es.md).
 
+## Ask a saved article
+
+The reader's **Preguntar al artículo** form answers through the Hub model with
+exact quotes and clickable paragraph anchors. A click highlights and focuses
+the source paragraph. MCP offers the same capability through `ask_link` and
+`read_link_paragraphs`. Partial context, unavailable models, invalid quotes and
+changed text are reported. Quote checks verify provenance, not interpretation;
+questions and answers are transient and do not edit the saved library.
+See [the API, MCP contract and limits](docs/ARTICLE_QUESTIONS.md).
+
 ## Run
 
 Requires Node.js 22.13 or later (it uses the built-in `node:sqlite`). No native modules, no Docker.
@@ -140,6 +150,8 @@ Tools:
 | `list_links` | List by state (unread/read/archived/all), tag, site, since. |
 | `search_links` | Full-text search. |
 | `read_link` | Read the extracted text, paginated by characters; includes highlights. |
+| `read_link_paragraphs` | Whole saved paragraphs, paginated by index, with versioned reader anchors. |
+| `ask_link` | Ask the Hub model about saved text; answer sentences include checked quotes and paragraph anchors. |
 | `import_video_transcript` | Import available captions from a saved YouTube video for reading, search and quotes. Uses the same caption path as `media_subtitles` (yt-dlp, found like the download tools); does not download the video. |
 | `tag_link` | Add/remove tags. |
 | `mark_link` | Set read/unread/archived/favorite. Repeating read status preserves the original reading date. |

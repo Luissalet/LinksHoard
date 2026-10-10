@@ -9,6 +9,7 @@ import { enqueueFetch, waitForFetch } from "./fetcher.js";
 import { importTranscript } from "./transcript.js";
 import * as watches from "./watches.js";
 import * as media from "./media.js";
+import * as video from "./videoinsight.js";
 import { highlightsToCards, DEFAULT_DECK } from "./cards.js";
 import { resurface, resurfaceSettings } from "./resurface.js";
 import { readingPlan, readingPlanInput } from "./reading-plan.js";
@@ -25,7 +26,8 @@ delete_link is irreversible: confirm with the user before calling it.
 highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "Lecturas") through the hub; report the status it returns, and say plainly when the hub or Hypatia is not there. resurface answers "what should I read today": quote the title, site and reason of each item and open nothing without being asked.
 reading_plan selects complete unread saved texts for the user's available minutes and assumed reading speed. Report estimates, not guaranteed duration. It never fetches pages, marks links read or changes the daily resurfacing list; use read_link before summarizing any selected text.
 Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
-When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.`;
+When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.
+For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
 
@@ -452,11 +454,46 @@ export const TOOLS = [
       if (a.delete_files && !a.confirm) fail("Borrar los archivos es permanente: confirma con el usuario y vuelve a llamar con confirm: true.");
       return media.removeDownload(a.id, { deleteFiles: a.delete_files });
     }),
+
+  tool("link_video",
+    "Transcript (with timestamps) and key frames of a saved video link — transcripción del vídeo, fotogramas clave\nReturns what the background analysis obtained for a saved video: status (none, queued, running, done, partial, failed, no_source), the transcript (status, via, language, text, timed segments) and the key frames (index, t_s, time, reason and the absolute path of the JPEG). Identify the link by id or url. If the status is none or no_source, offer link_video_analyze. Quote only what is returned.\nSinónimos: qué dice el vídeo, transcripción del reel, resumen del vídeo, fotogramas, capturas del vídeo, subtítulos locales",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      segments: z.boolean().default(true).describe("Include the timed segments"),
+      max_chars: z.number().int().min(500).max(200000).default(20000).describe("Cut the transcript text at this many characters"),
+    }), RO,
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const view = video.videoView(link.id, { segments: a.segments, maxChars: a.max_chars });
+      return { title: link.title, url: link.url, ...view };
+    }),
+
+  tool("link_video_analyze",
+    "Transcribe a saved video link and extract its key frames — analizar vídeo, transcribir reel\nQueues (or repeats) the analysis of a saved link: a transcript through the family speech-to-text service (or faster-whisper on the CPU when installed) and key frames by scene change. The media is a file given in path, a finished download of the link, or - with download: true - the video downloaded with the application downloader. Idempotent: a finished analysis of the same file is returned unchanged unless force is true. wait (default true) follows it up to timeout_s; if it is still running, call link_video later.\nSinónimos: transcribe este reel, analiza el vídeo, saca los fotogramas, transcribir vídeo guardado, subtítulos del vídeo, procesar vídeo",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      path: z.string().trim().min(1).optional().describe("Absolute path of a video or audio file to use as the source"),
+      download: z.boolean().default(false).describe("Allow downloading the video of this link when no file is at hand"),
+      force: z.boolean().default(false), language: z.string().trim().max(10).optional(),
+      wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(1800).default(120),
+    }), { idempotentHint: true, openWorldHint: true },
+    async (a) => {
+      const link = resolveLinkOrFail(a);
+      const started = video.requestAnalysis(link.id, { path: a.path, download: a.download, force: a.force, language: a.language });
+      if (a.wait && ["queued", "running"].includes(started.status)) await video.waitVideoIdle(a.timeout_s * 1000);
+      return { title: link.title, ...video.videoView(link.id, { segments: false, maxChars: 4000 }) };
+    }),
+
+  tool("link_video_search",
+    "Search the spoken words of all analysed videos — buscar en transcripciones\nFull-text search over the transcripts of saved videos. Returns the matching lines with the link, the title and the time (seconds and m:ss) where they are said.\nSinónimos: qué vídeo dice, dónde dijo, buscar en los reels, buscar en las transcripciones, frase en un vídeo",
+    z.object({ query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).default(20) }), RO,
+    (a) => ({ query: a.query, hits: video.searchTranscripts(a.query, a.limit) })),
 ];
 
 /** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
 export function callTimeoutMs(name, args = {}) {
   if ((name === "media_download" || name === "media_retry" || name === "media_audio_for_asr") && args.wait !== false) return ((Number(args.timeout_s) || 150) + 30) * 1000;
+  if (name === "link_video_analyze" && args.wait !== false) return ((Number(args.timeout_s) || 120) + 30) * 1000;
   if (name === "media_status" && args.wait_s) return (Number(args.wait_s) + 30) * 1000;
   if (name === "media_tools" && args.update) return 6 * 60_000;
   if (name === "media_probe" || name === "media_info") return 120_000;

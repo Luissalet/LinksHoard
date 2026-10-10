@@ -12,6 +12,8 @@ import * as family from "./hoard-link.js";
 import { startScheduler } from "./watches.js";
 import { installMediaRoutes } from "./media-routes.js";
 import { initMedia } from "./media.js";
+import { initVideoInsight } from "./videoinsight.js";
+import { installVideoRoutes } from "./video-routes.js";
 import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +36,8 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   if (process.env.LINKS_WATCHES !== "0") startScheduler();
   // Media downloads: fix rows left by a previous run and re-queue the ones that never started.
   initMedia();
+  // Video insight: jobs left unfinished by the last run go back to the queue.
+  initVideoInsight();
 
   const app = express();
   app.disable("x-powered-by");
@@ -41,6 +45,7 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   app.use(express.json({ limit: "10mb" }));
   installRoutes(app, { version, dataDirConfigured });
   installMediaRoutes(app);
+  installVideoRoutes(app);
   installAgentRoutes(app, { token });
   const DIST = path.join(ROOT, "dist");
   if (serveStatic && fs.existsSync(DIST)) installSpa(app, DIST, { express });

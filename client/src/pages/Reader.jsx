@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { useAction, ConfirmDialog } from "../components/ui.jsx";
+import VideoInsight from "../components/VideoInsight.jsx";
 import { formatDate, isMediaUrl, kindLabel, readingTime } from "../format.js";
 
 const FONT_SIZES = [15, 17, 19, 22];
@@ -164,6 +165,8 @@ export default function Reader({ linkId }) {
       ) : link.fetch_status === "ok" ? (
         <p className="help">No se pudo extraer texto legible de esta página. Ábrela en el sitio original.</p>
       ) : null}
+
+      <VideoInsight linkId={linkId} kind={link.kind} notify={notify} />
 
       <HighlightPopover rect={selection?.rect} onSave={saveHighlight} onClose={() => setSelection(null)} />
 

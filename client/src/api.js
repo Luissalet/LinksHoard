@@ -29,6 +29,15 @@ export const api = {
     archive: (id, archived = true) => request("POST", `/api/links/${id}/archive`, { archived }),
     favorite: (id, favorite = true) => request("POST", `/api/links/${id}/favorite`, { favorite }),
     refetch: (id) => request("POST", `/api/links/${id}/refetch`),
+    video: (id) => request("GET", `/api/links/${id}/video`),
+    analyzeVideo: (id, data = {}) => request("POST", `/api/links/${id}/video/analyze`, data),
+    uploadVideo: async (id, file) => {
+      const response = await fetch(`/api/links/${id}/video/file?name=${encodeURIComponent(file.name)}`, { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: file });
+      let data = null;
+      try { data = await response.json(); } catch { data = null; }
+      if (!response.ok) throw new Error(data?.error || `Error ${response.status}`);
+      return data;
+    },
   },
   highlights: {
     list: (linkId) => request("GET", `/api/links/${linkId}/highlights`),
@@ -38,6 +47,7 @@ export const api = {
     toCards: (id, deck) => request("POST", `/api/highlights/${id}/to-cards`, deck ? { deck } : {}),
     linkToCards: (linkId, deck) => request("POST", `/api/links/${linkId}/cards`, deck ? { deck } : {}),
   },
+  videoSearch: (q) => request("GET", `/api/video/search${qs({ q })}`),
   resurface: (count) => request("GET", `/api/resurface${qs({ count })}`),
   settings: {
     get: () => request("GET", "/api/settings"),

@@ -158,7 +158,53 @@ const MIGRATIONS = [
       update.run(next, siteOf(next), r.id);
     }
   },
-];
+  // 8: video insight (see videoinsight.js): what was obtained from a saved video link - its key frames (timestamped images stored under
+  // <data>/video/<link id>), its transcript (full text plus timed segments, searchable) and the state of the background job
+  `
+  CREATE TABLE link_media (
+    link_id TEXT PRIMARY KEY REFERENCES links(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    detail TEXT NOT NULL DEFAULT '',
+    source_kind TEXT NOT NULL DEFAULT '',
+    source_path TEXT NOT NULL DEFAULT '',
+    source_fp TEXT NOT NULL DEFAULT '',
+    download_id TEXT NULL,
+    duration REAL NULL,
+    has_audio INTEGER NULL,
+    frames_status TEXT NOT NULL DEFAULT 'pending',
+    frames_error TEXT NOT NULL DEFAULT '',
+    transcript_status TEXT NOT NULL DEFAULT 'pending',
+    transcript_error TEXT NOT NULL DEFAULT '',
+    transcript_via TEXT NOT NULL DEFAULT '',
+    transcript_model TEXT NOT NULL DEFAULT '',
+    transcript_lang TEXT NOT NULL DEFAULT '',
+    transcript_text TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT NULL
+  );
+  CREATE INDEX link_media_status ON link_media(status);
+  CREATE TABLE link_frames (
+    link_id TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    t_s REAL NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'timed',
+    file TEXT NOT NULL,
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (link_id, idx)
+  );
+  CREATE TABLE link_segments (
+    link_id TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    text TEXT NOT NULL,
+    PRIMARY KEY (link_id, idx)
+  );
+  `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall
 // back to LIKE search and flag it in module state (surfaced at /api/state).
@@ -169,6 +215,7 @@ function tryCreateFts(conn) {
     conn.exec(
       "CREATE VIRTUAL TABLE IF NOT EXISTS links_fts USING fts5(title, description, content_text, notes, tags, link_id UNINDEXED)",
     );
+    conn.exec("CREATE VIRTUAL TABLE IF NOT EXISTS link_segments_fts USING fts5(text, link_id UNINDEXED, idx UNINDEXED)");
     ftsAvailable = true;
   } catch {
     ftsAvailable = false;

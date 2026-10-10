@@ -35,6 +35,9 @@ The server binds to `127.0.0.1` only. If port 5181 is busy it walks up to the ne
 | `LINKS_MEDIA_SIBLING_DIR` | One more folder searched for the programs, after `<HOARD_HOME>/bin` and before the `PATH` (default `../Writers hoard desktop/resources/bin`); `off` skips it. |
 | `LINKS_MEDIA_AUTO_UPDATE` / `LINKS_MEDIA_STALE_DAYS` | `0` turns off the automatic yt-dlp update (the Ajustes switch does the same); age in days after which yt-dlp is refreshed before a download (default 45). |
 | `PYTHON` | Python interpreter used for `python -m yt_dlp` / `pip install -U` (default `python3`, `python` or `py -3`). |
+| `LINKS_VIDEO` / `LINKS_VIDEO_AUTO` / `LINKS_VIDEO_AUTO_DOWNLOAD` | Video insight: `LINKS_VIDEO=0` stops the background sweep (retries, new videos); `LINKS_VIDEO_AUTO=0` stops analysing a video as soon as a file for it exists; `LINKS_VIDEO_AUTO_DOWNLOAD=1` also downloads the video of every saved video link (off by default). |
+| `LINKS_VIDEO_MAX_FRAMES` / `LINKS_VIDEO_MAX_UPLOAD_MB` / `LINKS_VIDEO_RETRY_S` | Key-frame cap (default 24), largest attached file (default 500 MB), seconds before each retry (default `60,300,1800`). |
+| `LINKS_WHISPER_MODEL` / `LINKS_WHISPER_ALLOW_DOWNLOAD` / `LINKS_PYTHON` | Local fallback engine: faster-whisper model (default `base`, must already be in the cache unless `LINKS_WHISPER_ALLOW_DOWNLOAD=1`) and the Python that has it. |
 | `LINKS_COOKIES_FILE` | Netscape cookies file for private posts (the setting in Ajustes wins). |
 | `LINKS_COOKIES_BROWSERS` | Comma-separated browsers to try for cookies, in order (default `firefox,chrome,edge,brave,chromium,vivaldi,opera`). |
 | `LINKS_MEDIA_TRANSCODE=0` | Do not re-encode downloaded videos that are not H.264/AAC. |
@@ -94,6 +97,29 @@ REST routes (same local guard as the rest of `/api`):
 | `GET /api/resurface` | `?count=`: today's "Para leer hoy" list, each item with its `reason`. |
 | `GET /api/settings` · `POST /api/settings` | `{ resurface: { digest, count } }`. |
 
+## Video insight (transcript and key frames)
+
+A saved video link (a reel, a short, a video page, or any media file the app holds) gets, in the background:
+
+- a **transcript with timestamps**: the family speech-to-text service (Funes, through Hoard Link) when it is running; otherwise `faster-whisper` on the CPU if Python has it and its model is already cached (nothing is downloaded behind your back); otherwise the step is marked `skipped` and retried later (up to 3 attempts, 1 / 5 / 30 minutes);
+- **key frames**: ffmpeg scene changes (`select=gt(scene,0.3)`), an opening frame and timed frames in the gaps, at most 24 JPEGs (640 px wide) in `<data>/video/<link id>/frames`, each with its time.
+
+Where the media comes from, in order: a file you give (path or upload), a finished download of that link (Descargas), and only on request (`download: true`, the "Descargar y analizar" button, or the `auto_download` setting) a download with the app's own yt-dlp integration. Finished downloads of videos are analysed by themselves (`auto`, on by default). The job is idempotent: the same file with nothing missing is not redone; only the missing part (for example the transcript) is retried; `force` redoes everything.
+
+The transcript is part of the full-text search (`/api/links?q=` and the Bandeja box find a link by what is said in it), and `GET /api/video/search?q=` returns the lines with their time. In the item view, "Vídeo: transcripción y fotogramas" shows the status, the frame strip (click a frame to jump to the matching line) and the timed transcript with a filter.
+
+| Endpoint | What |
+| --- | --- |
+| `GET /api/links/:id/video` | status, frames (with `url` and `path`), transcript (text, segments, engine) |
+| `POST /api/links/:id/video/analyze` | `{path?, download?, force?, language?}`; 202 while it runs, 200 when already done |
+| `PUT /api/links/:id/video/file?name=clip.mp4` | raw bytes of a video/audio file to attach (max 500 MB) |
+| `GET /api/links/:id/frames/:idx` | one frame (JPEG) |
+| `GET /api/video/search?q=` | spoken-word search with times |
+| `GET` / `PUT /api/video/settings` | `auto`, `auto_download`, `max_frames`, `max_duration_s`, `scene_threshold`, `whisper_model` |
+
+MCP tools: `link_video` (transcript + frames of a link), `link_video_analyze` (start / repeat, waits up to `timeout_s`), `link_video_search`.
+
+Limits: needs ffmpeg; a video with no audio track gets `no_audio`; very long videos are cut at `max_duration_s` for scene detection; no OCR of the frames; the app never downloads a video by itself unless `auto_download` is on.
 ## URL normalization (the dedupe key)
 
 Saving is idempotent on a normalized form of the URL (the family's shared rule, `normalizeUrl` of `hoard-commons/web.js`): `utm_*`, `fbclid`, `gclid`, `mc_*` and similar tracking params are stripped, the fragment is dropped, the host is lowercased, default ports and a trailing slash are removed (the bare root has no slash), the query is sorted, and a LinkedIn job link keeps only its job id. A scheme-less `example.com/page` is accepted and gets `https://`. When an older library is opened, the saved links are re-keyed to this form once. Saving an already-saved page (even with different tracking params) returns the existing link with `existing: true` instead of duplicating it.

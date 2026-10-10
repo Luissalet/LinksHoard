@@ -6,6 +6,7 @@ import { createApp } from "../server/app.js";
 import { close } from "../server/db.js";
 import { drain } from "../server/fetcher.js";
 import { shutdownMedia } from "../server/media.js";
+import { shutdownVideo } from "../server/videoinsight.js";
 
 // The tests serve pages and media from 127.0.0.1; the app refuses loopback addresses unless this is set (tests/net-policy.test.js turns it off to check).
 process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
@@ -36,6 +37,7 @@ export async function bootServer(options = {}) {
     // Let any still-queued/in-flight background fetch finish and write its
     // result before the database goes away, or it would throw "Database not
     // initialised" from an unawaited async task after the test has ended.
+    await shutdownVideo();
     await shutdownMedia(); // a download still running would write to a closed database
     await drain();
     await new Promise((resolve) => server.close(resolve));

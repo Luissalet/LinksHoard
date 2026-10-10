@@ -10,6 +10,7 @@ import { dataDir } from "./db.js";
 import * as watches from "./watches.js";
 import * as family from "./hoard-link.js";
 import { highlightsToCards } from "./cards.js";
+import { videoSummary } from "./videoinsight.js";
 import { resurface, resurfaceSettings, setResurfaceSettings } from "./resurface.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe." });
@@ -59,7 +60,7 @@ export function installRoutes(app, { version, dataDirConfigured }) {
   app.get("/api/links/:id", (req, res) => {
     const link = links.getLink(req.params.id);
     if (!link) return notFound(res);
-    res.json({ ...link, highlights: highlights.listHighlights(link.id) });
+    res.json({ ...link, highlights: highlights.listHighlights(link.id), video: videoSummary(link.id) });
   });
 
   app.post("/api/links", (req, res) => {

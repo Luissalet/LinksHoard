@@ -7,6 +7,7 @@ import { findAvailablePort, validPort, envFlag } from "./hoard-commons/server.js
 import { stop as stopFetcher } from "./fetcher.js";
 import { stopScheduler } from "./watches.js";
 import { shutdownMedia } from "./media.js";
+import { shutdownVideo } from "./videoinsight.js";
 import { close as closeDb } from "./db.js";
 import { setPublicUrl } from "./public-url.js";
 import { startBackground, stopBackground } from "./background.js";
@@ -26,6 +27,7 @@ try {
     onShutdown: async () => {
       stopScheduler();
       stopBackground();
+      await shutdownVideo();
       await shutdownMedia();
       await stopFetcher();
     },

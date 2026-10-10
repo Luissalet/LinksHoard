@@ -300,6 +300,10 @@ export function listDownloads({ status = "", limit = 50 } = {}) {
 // the queue, waiting and events
 // ---------------------------------------------------------------------------
 
+let doneHook = null;
+/** One function called with the finished download row (video insight uses it to analyse a downloaded video). */
+export function setDoneHook(fn) { doneHook = typeof fn === "function" ? fn : null; }
+
 const queue = new MediaQueue();
 const bus = new EventEmitter();
 bus.setMaxListeners(0);
@@ -987,6 +991,7 @@ async function runDownload(id, signal) {
     });
     jobEvent("done", getRow(id));
     terminal(id);
+    try { doneHook?.(getRow(id)); } catch { /* a hook must never fail a download */ }
     if (linkTask) {
       const task = linkTask().catch(() => {}).finally(() => post.delete(task));
       post.add(task);

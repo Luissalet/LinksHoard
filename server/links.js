@@ -2,7 +2,9 @@
 // (FTS5 when available, LIKE fallback otherwise — see db.js ftsEnabled()).
 import { resolveSince } from "./since.js";
 import { z } from "zod";
-import { db, uid, now, transaction, ftsEnabled, isOpen } from "./db.js";
+import fs from "node:fs";
+import path from "node:path";
+import { db, uid, now, transaction, ftsEnabled, isOpen, dataDir } from "./db.js";
 import { normalizeUrl, siteOf } from "./url.js";
 
 export const KINDS = ["article", "video", "audio", "pdf", "image", "other"];
@@ -100,9 +102,15 @@ export function deleteLink(id) {
   if (!existed) return false;
   transaction(() => {
     db().prepare("DELETE FROM highlights WHERE link_id = ?").run(id);
+    for (const table of ["link_frames", "link_segments", "link_media"]) db().prepare(`DELETE FROM ${table} WHERE link_id = ?`).run(id);
     db().prepare("DELETE FROM links WHERE id = ?").run(id);
-    if (ftsEnabled()) db().prepare("DELETE FROM links_fts WHERE link_id = ?").run(id);
+    if (ftsEnabled()) {
+      db().prepare("DELETE FROM links_fts WHERE link_id = ?").run(id);
+      db().prepare("DELETE FROM link_segments_fts WHERE link_id = ?").run(id);
+    }
   });
+  // the key frames and any uploaded video of this link (see videoinsight.js)
+  try { fs.rmSync(path.join(dataDir(), "video", String(id).replace(/[^\w-]/g, "_")), { recursive: true, force: true }); } catch { /* best effort */ }
   return true;
 }
 
@@ -156,13 +164,19 @@ function stateClause(state) {
 function searchIds(q) {
   if (!ftsEnabled()) {
     const like = `%${q}%`;
-    return db().prepare(
+    const own = db().prepare(
       "SELECT id FROM links WHERE title LIKE ? OR description LIKE ? OR content_text LIKE ? OR notes LIKE ? OR tags LIKE ?",
     ).all(like, like, like, like, like).map((r) => r.id);
+    // the transcript of a video is searched too (see videoinsight.js)
+    const spoken = db().prepare("SELECT DISTINCT link_id AS id FROM link_segments WHERE text LIKE ?").all(like).map((r) => r.id);
+    return [...new Set([...own, ...spoken])];
   }
   const escaped = q.replace(/"/g, '""');
-  return db().prepare(`SELECT link_id AS id FROM links_fts WHERE links_fts MATCH ? ORDER BY rank`)
+  const own = db().prepare(`SELECT link_id AS id FROM links_fts WHERE links_fts MATCH ? ORDER BY rank`)
     .all(`"${escaped}"`).map((r) => r.id);
+  const spoken = db().prepare(`SELECT DISTINCT link_id AS id FROM link_segments_fts WHERE link_segments_fts MATCH ?`)
+    .all(`"${escaped}"`).map((r) => r.id);
+  return [...new Set([...own, ...spoken])];
 }
 
 export function listLinks(query = {}) {

@@ -21,6 +21,7 @@ export const api = {
   links: {
     list: (filter) => request("GET", `/api/links${qs(filter)}`),
     get: (id) => request("GET", `/api/links/${id}`),
+    ask: (id, data) => request("POST", `/api/links/${id}/ask`, data),
     create: (data) => request("POST", "/api/links", data),
     update: (id, data) => request("PATCH", `/api/links/${id}`, data),
     remove: (id) => request("DELETE", `/api/links/${id}`),

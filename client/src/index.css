@@ -112,6 +112,15 @@ dialog::backdrop { background: #16223055; }
 
 .reader-text { font-size: 17px; line-height: 1.75; max-width: 68ch; white-space: pre-wrap; }
 .reader-text::selection { background: var(--highlight-bg); }
+.reader-text { overflow-wrap: anywhere; }
+.article-questions { margin: 24px 0 32px; padding: 20px 0; border-top: 1px solid var(--hoard-border); border-bottom: 1px solid var(--hoard-border); max-width: 68ch; }
+.article-answer-sentence { margin-top: 12px; font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+.article-citation { font-size: 13px; color: var(--hoard-accent); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+.article-citation:hover { color: var(--hoard-text); }
+.article-answer-warning { color: var(--hoard-text); font-size: 14px; line-height: 1.6; }
+.reader-paragraph { scroll-margin-top: 160px; }
+.reader-paragraph-active { background: var(--highlight-bg); color: var(--ink); }
+.reader-paragraph:focus-visible, .article-citation:focus-visible { outline: 2px solid var(--hoard-accent); outline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 }

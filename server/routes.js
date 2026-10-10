@@ -11,6 +11,8 @@ import * as watches from "./watches.js";
 import * as family from "./hoard-link.js";
 import { highlightsToCards } from "./cards.js";
 import { videoSummary } from "./videoinsight.js";
+import { articleSource } from "./article-source.js";
+import { askLink } from "./article-questions.js";
 import { resurface, resurfaceSettings, setResurfaceSettings } from "./resurface.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe." });
@@ -60,7 +62,11 @@ export function installRoutes(app, { version, dataDirConfigured }) {
   app.get("/api/links/:id", (req, res) => {
     const link = links.getLink(req.params.id);
     if (!link) return notFound(res);
-    res.json({ ...link, highlights: highlights.listHighlights(link.id), video: videoSummary(link.id) });
+    res.json({ ...link, article_source: articleSource(link), highlights: highlights.listHighlights(link.id), video: videoSummary(link.id) });
+  });
+
+  app.post("/api/links/:id/ask", async (req, res, next) => {
+    try { res.json(await askLink(req.params.id, req.body || {})); } catch (e) { next(e); }
   });
 
   app.post("/api/links", (req, res) => {

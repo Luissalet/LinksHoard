@@ -352,7 +352,7 @@ export const TOOLS = [
     z.object({}), RO,
     () => ({ tags: links.listTags() })),
   tool("media_download",
-    "Download video, audio or photos from a URL to disk (yt-dlp / gallery-dl) — not save_link.\nformat auto|video|audio|image; quality/max_height cap resolution; sections cut ranges; save_link (default true) bookmarks with tag descarga. Waits by default and returns absolute path and size. Never claim success unless ok is true and files is non-empty; still running: media_status; failed: media_retry.\nSinónimos: descárgame esto, bájame, download video, reel, mp3, Instagram photos",
+    "Download video, audio or photos from a URL — descargar, bájame vídeo, audio, fotos.\nSaves content to disk (yt-dlp / gallery-dl), not save_link. format auto|video|audio|image; quality/max_height cap resolution; sections cut ranges; save_link bookmarks with tag descarga. Waits by default; returns absolute path and size. Success only if ok and files non-empty; running: media_status; failed: media_retry.\nSinónimos: descárgame esto, descarga este vídeo, bájame, sácame el audio, pásalo a mp3, descargar de YouTube, descargar tweet, bajar música, guardar el vídeo en el disco, download video, reel, Instagram fotos",
     z.object({
       url: z.string().trim().min(1).describe("Link to the video, audio or post (YouTube, X, Instagram, TikTok, …)"),
       format: z.enum(media.FORMATS).default("auto").describe("auto: video, or photos when the post has no video; video: H.264/AAC MP4; audio: MP3; image: photo posts/carousels via gallery-dl"),

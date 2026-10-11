@@ -24,4 +24,11 @@ test("media_download stays under the Faustus 250-token description budget", () =
   assert.ok(tokens <= 250, `media_download ~${tokens} tokens`);
   assert.match(dl.description, /descárgame esto/);
   assert.match(dl.description, /not save_link/);
+  const firstLine = dl.description.split("\n")[0];
+  assert.ok(firstLine.length <= 110, "first line fits the retrieval index");
+  assert.match(firstLine, /descargar/);
+  assert.match(firstLine, /bájame/);
+  for (const phrase of ["descarga este vídeo", "sácame el audio", "pásalo a mp3", "descargar de YouTube", "descargar tweet", "bajar música", "guardar el vídeo en el disco"]) {
+    assert.ok(dl.description.includes(phrase), `Spanish retrieval phrase retained: ${phrase}`);
+  }
 });

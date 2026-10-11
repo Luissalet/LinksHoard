@@ -1,5 +1,6 @@
 // Every MCP/agent tool description must stay under 1000 characters so the
-// Faustus footprint (≈ chars/3) can stay under the 250-token trim threshold.
+// Descriptions above 750 characters exceed the conservative chars/3 budget;
+// the target-tool assertion below enforces the 250-token threshold directly.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TOOLS } from "../server/agent-tools.js";

@@ -327,13 +327,13 @@ export const TOOLS = [
     (a) => ({ ok: true, removed: watches.removeWatch(a.watch_id) })),
 
   tool("highlights_to_cards",
-    "Turn saved highlights into Hypatia flashcards — subrayados a tarjetas, enviar a Hypatia\nSends the highlights (of link_id or url, or every one saved since a date; default: all that have not gone yet) to Hypatia through the hub as flashcards in the deck \"Lecturas\" (deck overrides it): front = the highlighted text, back = your note and the article title, source_ref = hoard://links/highlight/<id>. Each highlight goes once (resend: true sends again; Hypatia does not duplicate a card). Returns ok, status (ok, nothing_new, hub_down, hypatia_unavailable, hypatia_error, unknown_link), sent and skipped; never claims cards were made when status is not ok.\nSinónimos: pasar subrayados a tarjetas, flashcards de lo que leí, estudiar mis subrayados, mandar a Hypatia, tarjetas de lecturas, repasar lo subrayado",
+    "Turn saved highlights into Hypatia flashcards — subrayados a tarjetas, enviar a Hypatia\nSends highlights (default: every one not sent yet) to Hypatia through the hub as flashcards: front = the highlighted text, back = your note and the article title, source_ref = hoard://links/highlight/<id>. Each highlight goes once. Returns ok, status (ok, nothing_new, hub_down, hypatia_unavailable, hypatia_error, unknown_link), sent and skipped; never claims cards were made when status is not ok.\nSinónimos: pasar subrayados a tarjetas, flashcards de lo que leí, estudiar mis subrayados, mandar a Hypatia, tarjetas de lecturas, repasar lo subrayado",
     z.object({
-      link_id: z.string().optional(),
-      url: z.string().optional(),
+      link_id: z.string().optional().describe("Only the highlights of this saved link"),
+      url: z.string().optional().describe("Only the highlights of the saved link with this URL"),
       since: z.string().optional().describe(SINCE_HELP),
-      deck: z.string().trim().min(1).max(120).default(DEFAULT_DECK),
-      resend: z.boolean().default(false),
+      deck: z.string().trim().min(1).max(120).default(DEFAULT_DECK).describe(`Hypatia deck (default "${DEFAULT_DECK}")`),
+      resend: z.boolean().default(false).describe("Send again highlights that already went; Hypatia does not duplicate a card"),
     }), { idempotentHint: true },
     (a) => highlightsToCards(a)),
 
@@ -352,7 +352,7 @@ export const TOOLS = [
     z.object({}), RO,
     () => ({ tags: links.listTags() })),
   tool("media_download",
-    "Download video, audio or photos from a URL — descargar, bájame vídeo, audio, fotos.\nSaves content to disk (yt-dlp / gallery-dl), not save_link. format auto|video|audio|image; quality/max_height cap resolution; sections cut ranges; save_link bookmarks with tag descarga. Waits by default; returns absolute path and size. Success only if ok and files non-empty; running: media_status; failed: media_retry.\nSinónimos: descárgame esto, descarga este vídeo, bájame, sácame el audio, pásalo a mp3, descargar de YouTube, descargar tweet, bajar música, guardar el vídeo en el disco, download video, reel, Instagram fotos",
+    "Download video, audio or photos from a URL — descargar, bájame vídeo, audio, fotos.\nSaves content to disk (yt-dlp / gallery-dl), not save_link. format auto|video|audio|image; quality/max_height cap resolution; sections cut ranges; save_link bookmarks with tag descarga. Waits by default; returns absolute path and size. Success only if ok and files non-empty; running: media_status; failed: media_retry.\nSinónimos: descárgame esto, descarga este vídeo, bájame, bájate, guarda el vídeo, sácame el audio, pásalo a mp3, descargar de YouTube, descargar reel, descargar tweet, bajar música, guardar el vídeo en el disco, download video, Instagram fotos",
     z.object({
       url: z.string().trim().min(1).describe("Link to the video, audio or post (YouTube, X, Instagram, TikTok, …)"),
       format: z.enum(media.FORMATS).default("auto").describe("auto: video, or photos when the post has no video; video: H.264/AAC MP4; audio: MP3; image: photo posts/carousels via gallery-dl"),

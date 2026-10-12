@@ -9,6 +9,7 @@ import Reader from "./pages/Reader.jsx";
 import Ajustes from "./pages/Ajustes.jsx";
 import Vigia from "./pages/Vigia.jsx";
 import Descargas from "./pages/Descargas.jsx";
+import { linksContext, viewFields, COPILOT_CONTEXT, COPILOT_REFRESH } from "./hoard-copilot.js";
 
 const PAGES = [
   { path: "bandeja", label: "Bandeja", icon: "M4 4h16v6H4zM4 14h16v6H4z", component: Bandeja },
@@ -57,6 +58,20 @@ export default function App() {
     }
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    const adapter = {
+      context: async () => {
+        const editor = {};
+        window.dispatchEvent(new CustomEvent(COPILOT_CONTEXT, { detail: editor }));
+        const route = window.location.hash.replace(/^#\/?/, "") || "bandeja";
+        return linksContext({ route, getLink: api.links.get, forms: viewFields(document), editor,
+          selection: editor.selection || window.getSelection()?.toString().trim() || "" });
+      },
+      onTurnEnd: () => { refresh(); window.dispatchEvent(new Event(COPILOT_REFRESH)); },
+    };
+    window.hoardCopilot = adapter;
+    return () => { if (window.hoardCopilot === adapter) delete window.hoardCopilot; };
+  }, [refresh]);
 
   const notify = useCallback((message) => setToast(message), []);
   const value = useMemo(() => ({ ...(state || {}), ready: !!state, refresh, notify }), [state, refresh, notify]);

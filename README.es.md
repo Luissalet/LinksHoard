@@ -4,6 +4,19 @@ Bandeja de lectura local: guarda una URL, obtén el texto del artículo extraíd
 
 English version: [`README.md`](README.md).
 
+## Copilot de Faustus
+
+El botón Faustus abre el panel de conversación común en todas las vistas.
+Faustus guarda conversaciones, borradores, memoria y ejecución; Links aporta
+el enlace nativo abierto, el párrafo vigente, la selección y los campos del
+formulario sin guardar. Las altas y los enlaces inexistentes aportan el contexto
+de la aplicación sin inventar un objeto. Al terminar el turno se refrescan las
+listas y el lector conservando notas y ajustes sin guardar. Añadir o quitar una
+etiqueta conserva las añadidas por el agente. `edit_link` permite editar solo
+los campos indicados de título, notas y etiquetas por API de agente y MCP.
+Las credenciales quedan en el servidor; su destino se configura con
+`LINKS_FAUSTUS_URL` o los ajustes del backend.
+
 ## Preguntar a un artículo guardado
 
 El formulario **Preguntar al artículo** del lector responde mediante el modelo
@@ -129,6 +142,7 @@ Herramientas:
 | `ask_link` | Preguntar al modelo del Hub sobre el texto guardado; frases con citas comprobadas y enlaces al párrafo. |
 | `import_video_transcript` | Importar subtítulos disponibles de un vídeo de YouTube guardado para leerlos, buscarlos y citarlos. Usa el mismo camino de subtítulos que `media_subtitles` (yt-dlp, buscado como las herramientas de descarga); no descarga el vídeo. |
 | `tag_link` | Añadir/quitar etiquetas. |
+| `edit_link` | Editar solo el título, las notas o las etiquetas indicadas; las diferencias de etiquetas conservan las demás. |
 | `mark_link` | Cambiar leído/no leído/archivado/favorito; repetir el mismo estado de lectura conserva la fecha original. |
 | `add_highlight` | Guardar una cita subrayada con nota. |
 | `link_digest` | Lo guardado desde una fecha, agrupado por sitio. |

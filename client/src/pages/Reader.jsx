@@ -5,6 +5,8 @@ import { useAction, ConfirmDialog } from "../components/ui.jsx";
 import VideoInsight from "../components/VideoInsight.jsx";
 import ArticleQuestions from "../components/ArticleQuestions.jsx";
 import { formatDate, isMediaUrl, kindLabel, readingTime } from "../format.js";
+import { useCopilotRefresh } from "../useCopilotRefresh.js";
+import { COPILOT_CONTEXT } from "../hoard-copilot.js";
 
 const FONT_SIZES = [15, 17, 19, 22];
 
@@ -28,6 +30,8 @@ export default function Reader({ linkId, paragraphId, sourceVersion }) {
   const [fontIdx, setFontIdx] = useState(1);
   const [tagInput, setTagInput] = useState("");
   const [notes, setNotes] = useState("");
+  const noteState = useRef({ value: "", baseline: "", loaded: false });
+  noteState.current.value = notes;
   const [selection, setSelection] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [run, busy] = useAction(notify);
@@ -52,10 +56,25 @@ export default function Reader({ linkId, paragraphId, sourceVersion }) {
     const data = await api.links.get(linkId);
     setLink(data);
     setHighlights(data.highlights || []);
-    setNotes(data.notes || "");
+    if (!noteState.current.loaded || noteState.current.value === noteState.current.baseline) {
+      setNotes(data.notes || "");
+      noteState.current.value = data.notes || "";
+    }
+    noteState.current.baseline = data.notes || "";
+    noteState.current.loaded = true;
     if (!data.read_at) api.links.read(linkId).then(() => refreshApp()).catch(() => {});
   }, [linkId, refreshApp]);
   useEffect(() => { load(); }, [load]);
+  useCopilotRefresh(load);
+  useEffect(() => {
+    const context = event => Object.assign(event.detail, {
+      link_id: linkId, notes: noteState.current.value,
+      notes_dirty: noteState.current.value !== noteState.current.baseline,
+      selection: selection?.text || "",
+    });
+    window.addEventListener(COPILOT_CONTEXT, context);
+    return () => window.removeEventListener(COPILOT_CONTEXT, context);
+  }, [linkId, selection]);
 
   useEffect(() => {
     if (!link || link.fetch_status !== "pending") return undefined;
@@ -113,16 +132,23 @@ export default function Reader({ linkId, paragraphId, sourceVersion }) {
     e.preventDefault();
     const tag = tagInput.trim();
     if (!tag) return;
-    const updated = await run(() => api.links.update(linkId, { tags: [...new Set([...link.tags, tag])] }));
+    const updated = await run(() => api.links.update(linkId, { tags_add: [tag] }));
     if (updated) { setLink((l) => ({ ...l, tags: updated.tags })); setTagInput(""); refreshApp(); }
   };
   const removeTag = async (tag) => {
-    const updated = await run(() => api.links.update(linkId, { tags: link.tags.filter((t) => t !== tag) }));
+    const updated = await run(() => api.links.update(linkId, { tags_remove: [tag] }));
     if (updated) { setLink((l) => ({ ...l, tags: updated.tags })); refreshApp(); }
   };
 
   const saveNotes = async () => {
-    await run(() => api.links.update(linkId, { notes }), "Notas guardadas.");
+    const saved = notes;
+    if (saved === noteState.current.baseline) return;
+    const updated = await run(() => api.links.update(linkId, { notes: saved }), "Notas guardadas.");
+    if (updated) {
+      noteState.current.baseline = updated.notes || "";
+      setLink(current => ({ ...current, ...updated }));
+      if (noteState.current.value === saved) setNotes(updated.notes || "");
+    }
   };
 
   const toggleFavorite = async () => {

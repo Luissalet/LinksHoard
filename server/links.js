@@ -23,6 +23,8 @@ export const patchInput = z.object({
   title: z.string().trim().max(500).optional(),
   notes: z.string().trim().max(20000).optional(),
   tags: tagsField.optional(),
+  tags_add: tagsField.optional(),
+  tags_remove: tagsField.optional(),
   archived: z.boolean().optional(),
   favorite: z.boolean().optional(),
 }).strict();
@@ -89,6 +91,13 @@ export function updateLink(id, patch) {
   if (!current) return null;
   const data = patchInput.parse(patch);
   const next = { ...current, ...data };
+  if (data.tags_add || data.tags_remove) {
+    const tags = new Set(next.tags);
+    for (const tag of data.tags_add || []) tags.add(tag);
+    for (const tag of data.tags_remove || []) tags.delete(tag);
+    next.tags = [...tags];
+    tagsField.parse(next.tags);
+  }
   db().prepare(
     "UPDATE links SET title = ?, notes = ?, tags = ?, archived = ?, favorite = ? WHERE id = ?",
   ).run(next.title, next.notes, JSON.stringify(next.tags), next.archived ? 1 : 0, next.favorite ? 1 : 0, id);

@@ -7,7 +7,7 @@ async function request(method, url, body) {
   });
   let data = null;
   try { data = await response.json(); } catch { data = null; }
-  if (!response.ok) throw new Error(data?.error || `Error ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(data?.error || `Error ${response.status}`), { status: response.status });
   return data;
 }
 

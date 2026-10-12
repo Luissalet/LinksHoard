@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "x-family": { "copilot": { "version": 1, "info": "/api/copilot/info", "panel": "/api/copilot/panel.js", "proxy": "/api/copilot/proxy", "launcher": "/api/copilot/launcher.js", "context": "window.hoardCopilot.context", "refresh": "window.hoardCopilot.onTurnEnd" } },
   "id": "links",
   "name": "Links Hoard",
   "purpose": "Read-later bookmark library with extracted article text, tags and highlights, stored locally; also downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk.",

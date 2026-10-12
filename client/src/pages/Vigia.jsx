@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Page, Section, Field, Empty, useAction } from "../components/ui.jsx";
+import { useCopilotRefresh } from "../useCopilotRefresh.js";
 
 const KIND_LABEL = { feed: "Feed", github: "GitHub", page: "Página" };
 const when = (iso) => (iso ? new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "nunca");
@@ -21,6 +22,7 @@ export default function Vigia() {
     } catch (e) { notify(e.message); }
   }, [showSeen, notify]);
   useEffect(() => { load(); }, [load]);
+  useCopilotRefresh(load);
 
   const add = async (e) => {
     e.preventDefault();

@@ -208,6 +208,16 @@ export const TOOLS = [
       return { ...present(updated), state_hint: "Only tags changed. To set actual favorite status, use mark_link with state favorite." };
     }),
 
+  tool("edit_link",
+    "Edit a saved link's title, notes or tags; omitted fields stay unchanged.\nRead the current link first. tags_add/tags_remove preserve other labels.\nSinónimos: editar enlace, cambiar título, escribir notas, añadir etiquetas",
+    links.patchInput.extend({ id: z.string().optional(), url: z.string().optional() }),
+    { idempotentHint: true },
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const { id, url, ...patch } = a;
+      return present(links.updateLink(link.id, patch));
+    }),
+
   tool("mark_link",
     "Set actual read, archive or favorite status (not a tag).\nSet state to read, unread, archived or favorite; on/off toggles it (default true). To mark a link as favorite, use this tool with state favorite, not tag_link.\nSinónimos: marcar leído, marcar como leído, archivar, marcar favorito, destacar, marcar sin leer",
     z.object({

@@ -4,6 +4,7 @@ import { useApp } from "../App.jsx";
 import { Page, Empty, useAction } from "./ui.jsx";
 import SaveBox from "./SaveBox.jsx";
 import LinkRow from "./LinkRow.jsx";
+import { useCopilotRefresh } from "../useCopilotRefresh.js";
 
 function useQueryParam(name) {
   const [value, setValue] = useState(() => new URLSearchParams(window.location.hash.split("?")[1] || "").get(name) || "");
@@ -41,6 +42,7 @@ export default function LinkList({ title, description, state, showSave = false, 
   }, [state, tagParam, site, q, favoriteOnly]);
 
   useEffect(() => { load(); }, [load]);
+  useCopilotRefresh(load);
   useEffect(() => { api.sites().then(setSites).catch(() => {}); }, []);
   // Poll while any link is still fetching, so title/excerpt appear without a manual refresh.
   useEffect(() => {

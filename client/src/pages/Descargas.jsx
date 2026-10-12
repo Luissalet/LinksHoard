@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Page, Section, Field, Empty, useAction } from "../components/ui.jsx";
 import { formatBytes, formatDate, formatDuration } from "../format.js";
+import { useCopilotRefresh } from "../useCopilotRefresh.js";
 
 const STATUS = {
   queued: { label: "En cola", chip: "chip" },
@@ -154,6 +155,7 @@ export default function Descargas() {
   }, [notify]);
 
   useEffect(() => { alive.current = true; load(); api.media.settings().then(setSettings).catch(() => {}); return () => { alive.current = false; }; }, [load]);
+  useCopilotRefresh(load);
 
   const hasActive = useMemo(() => !!data?.items.some((i) => ACTIVE.includes(i.status)), [data]);
   useEffect(() => {

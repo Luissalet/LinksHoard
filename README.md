@@ -4,6 +4,18 @@ Local-first read-later bookmark library: save a URL, get the extracted article t
 
 Spanish version: [`README.es.md`](README.es.md).
 
+## Faustus copilot
+
+The shared Faustus button opens its chat panel in every view. Faustus owns
+conversations, drafts, memory and agent execution; Links supplies the current
+native link, a selected current paragraph, selected text and form values that
+have not been saved. New and missing links provide app context without an
+invented object. Completing a turn refreshes lists and the reader while keeping
+unsaved notes and settings. Manual tag additions and removals preserve labels
+added by the agent. `edit_link` exposes partial title, notes and tag edits through
+the normal agent API and MCP. Credentials stay in the server; configure its
+Faustus endpoint with `LINKS_FAUSTUS_URL` or backend settings.
+
 ## Ask a saved article
 
 The reader's **Preguntar al artículo** form answers through the Hub model with
@@ -154,6 +166,7 @@ Tools:
 | `ask_link` | Ask the Hub model about saved text; answer sentences include checked quotes and paragraph anchors. |
 | `import_video_transcript` | Import available captions from a saved YouTube video for reading, search and quotes. Uses the same caption path as `media_subtitles` (yt-dlp, found like the download tools); does not download the video. |
 | `tag_link` | Add/remove tags. |
+| `edit_link` | Edit only the supplied title, notes or tags; label deltas preserve other labels. |
 | `mark_link` | Set read/unread/archived/favorite. Repeating read status preserves the original reading date. |
 | `add_highlight` | Save a highlighted quote with a note. |
 | `link_digest` | What was saved since a date, grouped by site. |

@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Page, Section, Field, useAction } from "../components/ui.jsx";
+import { changedFields, refreshDraft } from "../hoard-copilot.js";
+import { useCopilotRefresh } from "../useCopilotRefresh.js";
 
 function bookmarkletHref(origin) {
   const code = `javascript:(function(){location.href=${JSON.stringify(origin)}+'/share?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title);})();`;
@@ -22,21 +24,41 @@ export default function Ajustes() {
   const [mediaDir, setMediaDir] = useState("");
   const [cookiesFile, setCookiesFile] = useState("");
   const [autoUpdate, setAutoUpdate] = useState(true);
-  useEffect(() => {
-    api.media.settings().then((s) => { setMedia(s); setMediaDir(s.dir_is_default ? "" : s.dir); setCookiesFile(s.cookies_file || ""); setAutoUpdate(s.auto_update !== false); }).catch(() => {});
+  const [reading, setReading] = useState({ digest: true, count: 3 });
+  const currentSettings = useRef({});
+  currentSettings.current = { media: { dir: mediaDir.trim(), cookies_file: cookiesFile.trim(), auto_update: autoUpdate },
+    reading: { digest: reading.digest, count: Number(reading.count) } };
+  const settingsBaseline = useRef({ media: null, reading: null });
+  const loadSettings = useCallback(async () => {
+    const [s, r] = await Promise.all([api.media.settings(), api.settings.get()]);
+    const latest = { dir: s.dir_is_default ? "" : s.dir, cookies_file: s.cookies_file || "", auto_update: s.auto_update !== false };
+    const next = refreshDraft(settingsBaseline.current.media, currentSettings.current.media, latest);
+    setMedia(s); setMediaDir(next.dir); setCookiesFile(next.cookies_file); setAutoUpdate(next.auto_update);
+    setReading(refreshDraft(settingsBaseline.current.reading, currentSettings.current.reading, r.resurface));
+    settingsBaseline.current = { media: latest, reading: r.resurface };
   }, []);
+  useEffect(() => { loadSettings().catch(() => {}); }, [loadSettings]);
+  useCopilotRefresh(loadSettings);
   const saveMedia = async (e) => {
     e.preventDefault();
-    const out = await run(() => api.media.saveSettings({ dir: mediaDir.trim(), cookies_file: cookiesFile.trim(), auto_update: autoUpdate }), "Ajustes de descargas guardados.");
-    if (out) { setMedia(out); setMediaDir(out.dir_is_default ? "" : out.dir); }
+    const saved = currentSettings.current.media;
+    const out = await run(() => api.media.saveSettings(changedFields(settingsBaseline.current.media || {}, saved)), "Ajustes de descargas guardados.");
+    if (out) {
+      const latest = { dir: out.dir_is_default ? "" : out.dir, cookies_file: out.cookies_file || "", auto_update: out.auto_update !== false };
+      const next = refreshDraft(saved, currentSettings.current.media, latest);
+      setMedia(out); setMediaDir(next.dir); setCookiesFile(next.cookies_file); setAutoUpdate(next.auto_update);
+      settingsBaseline.current.media = latest;
+    }
   };
 
-  const [reading, setReading] = useState({ digest: true, count: 3 });
-  useEffect(() => { api.settings.get().then((r) => setReading(r.resurface)).catch(() => {}); }, []);
   const saveReading = async (e) => {
     e.preventDefault();
-    const out = await run(() => api.settings.save({ resurface: { digest: reading.digest, count: Number(reading.count) } }), "Ajustes de lectura guardados.");
-    if (out) setReading(out.resurface);
+    const saved = currentSettings.current.reading;
+    const out = await run(() => api.settings.save({ resurface: changedFields(settingsBaseline.current.reading || {}, saved) }), "Ajustes de lectura guardados.");
+    if (out) {
+      setReading(refreshDraft(saved, currentSettings.current.reading, out.resurface));
+      settingsBaseline.current.reading = out.resurface;
+    }
   };
 
   const runImport = async (e) => {

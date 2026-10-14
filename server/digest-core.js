@@ -180,13 +180,36 @@ export function cleanOcr(text, max = 1500) {
 
 const words = (text) => new Set(String(text || "").toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || []);
 
-/** Jaccard similarity of the word sets of two texts (1 = same words). */
-export function textSimilarity(a, b) {
-  const A = words(a), B = words(b);
+const trigrams = (text) => {
+  const t = String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const out = new Set();
+  for (let i = 0; i + 3 <= t.length; i++) out.add(t.slice(i, i + 3));
+  if (!out.size && t) out.add(t);
+  return out;
+};
+const jaccard = (A, B) => {
   if (!A.size && !B.size) return 1;
   let inter = 0;
   for (const w of A) if (B.has(w)) inter++;
   return inter / (A.size + B.size - inter);
+};
+
+/** How alike two texts are, 0 to 1: the better of the word overlap and the overlap of letter triplets with spacing ignored (OCR often
+ * glues or splits words differently on two frames of the same screen). */
+export function textSimilarity(a, b) {
+  return Math.max(jaccard(words(a), words(b)), jaccard(trigrams(a), trigrams(b)));
+}
+
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
+/** Post texts from some sites arrive with HTML entities (&amp;, &#39;). */
+export function decodeEntities(text) {
+  return String(text || "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
+      return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m;
+    }
+    return ENTITIES[e.toLowerCase()] ?? m;
+  });
 }
 
 // ---------------------------------------------------------------------------

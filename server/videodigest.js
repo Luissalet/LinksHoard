@@ -624,10 +624,10 @@ async function runDigest(id) {
     });
     const model = {
       version: DIGEST_VERSION, source_fp: med.source_fp, link_id: id, generated_at: new Date().toISOString().slice(0, 16).replace("T", " "),
-      title: (link.fetch_status === "ok" && link.title) || meta.title || link.title || "", url: link.url_original || link.url, platform: meta.platform || link.site || "",
+      title: core.decodeEntities((link.fetch_status === "ok" && link.title) || meta.title || link.title || ""), url: link.url_original || link.url, platform: meta.platform || link.site || "",
       uploader: meta.uploader || link.byline || "", upload_date: meta.upload_date ? String(meta.upload_date).replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3") : "",
       duration, width: info.width, height: info.height, language: mv.transcript.language || "",
-      post_text: meta.description || (link.content_text && link.content_text.length < 4000 ? link.content_text : "") || "",
+      post_text: core.decodeEntities(meta.description || (link.content_text && link.content_text.length < 4000 ? link.content_text : "") || ""),
       focus: opts.focus || "", meta, seg_info: segInfo,
       transcript: { status: mv.transcript.status, via: mv.transcript.via, model: mv.transcript.model, language: mv.transcript.language, error: mv.transcript.error, segments: speech },
       visual, chapters, summary: null, notes, ocr_engine: ocrEngine, ocr_done: !!ocrEngine || !s.ocr, vision_model: visionModel,

@@ -174,6 +174,8 @@ ${COMMON}
     console.error("  Stream #0:1[0x2](und): Audio: " + audio + ", 44100 Hz, stereo");
     process.exit(1);
   }
+  // a null output ("-f null -", the scene pass of video insight) writes nothing
+  if (last === "-") return;
   // speech-to-text audio: mono 16 kHz PCM WAV
   fs.writeFileSync(last, has("-ar") ? Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4, 0), Buffer.from("WAVE"), Buffer.alloc(2048, 3)]) : Buffer.concat([Buffer.from("H264"), Buffer.alloc(4096, 9)]));
 })();

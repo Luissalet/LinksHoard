@@ -344,6 +344,7 @@ export function renderCard(m, tokens = {}) {
 /** The index: one block per chapter. */
 export function renderIndex(m) {
   const out = ["## Índice por capítulos", ""];
+  if ((m.visual || []).some((v) => v.caption)) out.push(`> En los planos, *(gen.)* marca la descripción generada${m.vision_model ? ` por ${m.vision_model}` : ""}; «texto» es OCR literal.`, "");
   const chapters = m.chapters || [];
   if (!chapters.length) return [...out, "(sin capítulos: el vídeo no tiene ni voz ni imagen analizable)"].join("\n");
   const model = m.summary?.model || m.chapter_model || "";
@@ -353,12 +354,15 @@ export function renderIndex(m) {
     if (c.summary) out.push(`${c.summary} ${gen(model)}`);
     else if (c.said) out.push(`Dice (literal, inicio): «${oneLine(c.said, 220)}»`);
     const screens = (m.visual || []).filter((v) => v.start < c.end && v.end > c.start && v.same_as === null);
-    const shown = screens.filter((v) => v.ocr || v.caption || v.important).slice(0, 6);
+    // the index stays lean: at most five shots per chapter, the ones worth looking at first, in time order
+    const shown = screens.filter((v) => v.ocr || v.caption || v.important)
+      .map((v, i) => ({ v, i })).sort((a, b) => (b.v.important ? 1 : 0) - (a.v.important ? 1 : 0) || a.i - b.i)
+      .slice(0, 5).sort((a, b) => a.i - b.i).map((x) => x.v);
     for (const v of shown) {
       const bits = [`v${v.idx} [${clock(v.start)}]`];
       if (v.kind) bits.push(kindLabel(v.kind));
-      if (v.caption) bits.push(`${oneLine(v.caption, 140)} ${gen(m.vision_model)}`);
-      if (v.ocr) bits.push(`texto: «${oneLine(v.ocr, 160)}»`);
+      if (v.caption && (!v.ocr || v.important)) bits.push(`${oneLine(v.caption, 110)} *(gen.)*`);
+      if (v.ocr) bits.push(`texto: «${oneLine(v.ocr, 140)}»`);
       if (v.important) bits.push("★ conviene verlo");
       bits.push(v.file);
       out.push(`- ${bits.join(" · ")}`);

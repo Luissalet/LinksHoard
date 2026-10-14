@@ -192,6 +192,17 @@ export function readLayer(linkId, level = "brief", { from = null, to = null } = 
 // family apps
 // ---------------------------------------------------------------------------
 
+/** Run fn over items with at most width(item, index) running at once (the first can go alone, to start a service). */
+async function eachLimit(items, width, fn) {
+  let next = 0;
+  const lane = async () => { while (next < items.length) { const i = next++; await fn(items[i], i); } };
+  if (!items.length) return;
+  await fn(items[0], 0);
+  next = 1;
+  const n = Math.max(1, Math.min(items.length - 1, width(items[1], 1)));
+  await Promise.all(Array.from({ length: n }, lane));
+}
+
 const sleep = (ms) => new Promise((r) => { const t = setTimeout(r, ms); t.unref?.(); });
 
 /** Start a sibling app through the Hub when the service it owns is down (Funes for speech to text, Kafka for OCR). Best effort. */
@@ -348,7 +359,7 @@ const VISION_SCHEMA = { type: "object", additionalProperties: false, required: [
 
 async function describeFrame(file, { lang, ocr }) {
   const res = await chat({
-    capability: "vision", images: [fs.readFileSync(file)], json: VISION_SCHEMA, maxTokens: 400, temperature: 0, timeoutMs: 180_000, graceMs: 10_000,
+    capability: "vision", images: [fs.readFileSync(file)], json: VISION_SCHEMA, effort: "low", maxTokens: 600, temperature: 0, timeoutMs: 180_000, graceMs: 10_000,
     messages: [
       { role: "system", content: `You describe one frame of a video for a reader who will not see it. Answer in ${lang === "es" ? "Spanish" : lang}. kind: the kind of picture. caption: one or two plain sentences on what is shown (people, interface, chart axes and trend, diagram parts, objects); do not transcribe long text, it is read separately by OCR; never guess names or brands you cannot read. important: true only when the picture carries information that words cannot (a chart, a diagram, a UI state, a physical demonstration), so the reader should look at it.` },
       { role: "user", content: ocr ? `Text read on screen by OCR (may contain errors): ${ocr.slice(0, 600)}` : "Describe this frame." },
@@ -576,14 +587,18 @@ async function runDigest(id) {
       stage("ocr", `Leyendo el texto en pantalla (0/${distinct.length})…`);
       const state = {};
       let done = 0, failed = 0;
-      for (const v of distinct) {
-        if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
+      let unavailable = null;
+      // the first frame alone: it may have to start the OCR service; then two at a time
+      await eachLimit(distinct, (v, i) => (i === 0 ? 1 : 2), async (v) => {
+        if (unavailable || signal.aborted) return;
         const r = await ocrOne(path.join(dir, v.file), { lang: s.ocr_lang, state, signal });
-        if (!r.ok && r.kind === "unavailable") { notes.push(r.error); ocrEngine = null; break; }
+        if (!r.ok && r.kind === "unavailable") { unavailable = r.error; return; }
         if (r.ok) { v.ocr = core.cleanOcr(r.text); ocrEngine = r.backend || ocrEngine; } else failed++;
         done++;
         if (done % 5 === 0) stage("ocr", `Leyendo el texto en pantalla (${done}/${distinct.length})…`);
-      }
+      });
+      if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
+      if (unavailable) { notes.push(unavailable); ocrEngine = null; }
       if (failed) notes.push(`El OCR falló en ${failed} fotogramas.`);
       let last = null;
       for (const v of distinct) {
@@ -599,19 +614,22 @@ async function runDigest(id) {
       const order = [...distinct].sort((a, b) => (b.end - b.start) - (a.end - a.start)).slice(0, s.vision_max);
       stage("vision", `Describiendo planos (0/${order.length})…`);
       let done = 0;
-      for (const v of order) {
-        if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
+      let stopped = null;
+      await eachLimit(order, (v, i) => (i === 0 ? 1 : 2), async (v) => {
+        if (stopped || signal.aborted) return;
         const r = await describeFrame(path.join(dir, v.file), { lang: s.summary_lang, ocr: v.ocr });
         if (!r.ok) {
-          if (["no_model", "hub_down"].includes(r.error) || done === 0) { notes.push(`Sin descripciones de imagen: ${r.error === "no_model" ? "no hay un modelo de visión servido" : r.detail || r.error}.`); break; }
-          continue;
+          if (["no_model", "hub_down"].includes(r.error) || done === 0) stopped = `Sin descripciones de imagen: ${r.error === "no_model" ? "no hay un modelo de visión servido" : r.detail || r.error}.`;
+          return;
         }
         Object.assign(v, { kind: r.kind, caption: r.caption, important: r.important });
         visionModel = r.model || visionModel;
         done++;
         if (done % 3 === 0) stage("vision", `Describiendo planos (${done}/${order.length})…`);
-      }
-      if (order.length > s.vision_max) notes.push(`Solo se describieron los ${s.vision_max} planos más largos.`);
+      });
+      if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
+      if (stopped) notes.push(stopped);
+      if (distinct.length > s.vision_max) notes.push(`Solo se describieron los ${s.vision_max} planos más largos.`);
     }
 
     // 6. chapters and the generated summary

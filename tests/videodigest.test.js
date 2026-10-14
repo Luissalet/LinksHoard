@@ -82,6 +82,8 @@ test("paragraphs, cleanOcr and textSimilarity", () => {
   assert.equal(core.cleanOcr("  def  main():\n|\n~\n  return 42  "), "def main():\nreturn 42");
   assert.equal(core.textSimilarity("uno dos tres", "tres dos uno"), 1);
   assert.ok(core.textSimilarity("uno dos tres", "cuatro cinco") === 0);
+  assert.ok(core.textSimilarity("MAXPOWER NASA KENNEDYSPACE CENTER", "MAXPOWER NASAKENNEDYSPACECENTER") >= 0.9, "same screen, different spacing");
+  assert.equal(core.decodeEntities("astronauts &amp; more &#39;hi&#39; &#x1F680; &bogus;"), "astronauts & more 'hi' 🚀 &bogus;");
 });
 
 test("renderers keep literal and generated material apart", () => {

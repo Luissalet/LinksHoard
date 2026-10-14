@@ -162,7 +162,7 @@ Herramientas:
 | `resurface` | Qué leer hoy entre lo guardado sin leer (`count`, 3 por defecto); la misma lista todo el día, nunca el mismo enlace dos veces en 14 días. |
 | `reading_plan` | Textos completos sin leer para `minutes`, con `words_per_minute` (200 por defecto), `max_items` (5), filtros opcionales `tag` / `site`; estimaciones sin cambiar estado. |
 | `list_tags` | Todas las etiquetas en uso, con recuento. |
-| `media_download` | Descargar el vídeo, el audio o las fotos de un enlace; espera y devuelve los archivos con ruta absoluta y tamaño (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). |
+| `media_download` | Descargar el vídeo, el audio o las fotos de un enlace; espera y devuelve los archivos con ruta absoluta y tamaño (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). Una descarga terminada lista además sus archivos en `deliverables`, que Faustus convierte en enlaces de descarga en el chat (diálogo de guardar en el escritorio, navegador o móvil). |
 | `media_status` | Progreso y resultado de una descarga o la lista reciente. |
 | `media_cancel` | Cancelar una descarga en espera o en marcha. |
 | `media_retry` | Volver a encolar una descarga fallida o cancelada. |

@@ -642,7 +642,7 @@ async function runDigest(id) {
     });
     const model = {
       version: DIGEST_VERSION, source_fp: med.source_fp, link_id: id, generated_at: new Date().toISOString().slice(0, 16).replace("T", " "),
-      title: core.decodeEntities((link.fetch_status === "ok" && link.title) || meta.title || link.title || ""), url: link.url_original || link.url, platform: meta.platform || link.site || "",
+      title: core.decodeEntities(meta.title || (link.fetch_status === "ok" && link.title) || link.title || ""), url: link.url_original || link.url, platform: meta.platform || link.site || "",
       uploader: meta.uploader || link.byline || "", upload_date: meta.upload_date ? String(meta.upload_date).replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3") : "",
       duration, width: info.width, height: info.height, language: mv.transcript.language || "",
       post_text: core.decodeEntities(meta.description || (link.content_text && link.content_text.length < 4000 ? link.content_text : "") || ""),
@@ -711,7 +711,7 @@ async function runDigest(id) {
     writeText(path.join(dir, "digest.json"), JSON.stringify({ ...model, transcript: { ...model.transcript } }, null, 1));
     replaceVisual(id, visual);
     const stats = {
-      duration_s: duration, words: speech.reduce((n, x) => n + x.text.split(/\s+/).filter(Boolean).length, 0), speech_segments: speech.length,
+      title: model.title, duration_s: duration, words: speech.reduce((n, x) => n + x.text.split(/\s+/).filter(Boolean).length, 0), speech_segments: speech.length,
       visual_segments: visual.length, distinct_frames: distinct.length, ocr_frames: distinct.filter((v) => v.ocr).length,
       described_frames: distinct.filter((v) => v.caption).length, chapters: chapters.length, sheets: sheets.length, tokens,
       engines: { transcript: [mv.transcript.via, mv.transcript.model].filter(Boolean).join(" ") || null, ocr: ocrEngine, vision: visionModel, llm: model.summary?.model || null },
@@ -801,7 +801,7 @@ export function listDigests({ limit = 30 } = {}) {
     JOIN links l ON l.id = d.link_id ORDER BY d.updated_at DESC LIMIT ?`).all(Math.max(1, Math.min(200, Number(limit) || 30))).map((r) => {
     let stats = {};
     try { stats = JSON.parse(r.stats || "{}"); } catch { stats = {}; }
-    return { link_id: r.link_id, title: r.title, url: r.url, status: r.status, stage: r.stage || undefined, detail: r.detail || undefined, focus: r.focus || undefined,
+    return { link_id: r.link_id, title: stats.title || r.title, url: r.url, status: r.status, stage: r.stage || undefined, detail: r.detail || undefined, focus: r.focus || undefined,
       duration_s: stats.duration_s, tokens: stats.tokens?.brief, updated_at: r.updated_at, finished_at: r.finished_at };
   });
 }

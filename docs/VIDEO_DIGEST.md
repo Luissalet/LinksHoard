@@ -30,7 +30,7 @@ Read **brief** (card + index) first. Literal material (transcript, OCR, post tex
 5. **Chapters**: cut near every 1/12 of the video (45 s – 5 min), preferring picture changes, then pauses, then sentence ends. The Hub's text model writes a title and summary per chapter, then the summary, key points and, with a `focus`, the answer to it and the chapters that matter (★ in the index).
 6. **Files and search**: the layers above, the screen text in a full-text index next to the transcripts, an event `links.video.digest` on the family bus, and an optional copy to the export folder of the settings.
 
-A digest is idempotent: asking again for the same video and focus returns it as it is; a new focus reuses the visual pass, OCR and descriptions and only redoes chapters and summary; `force` redoes everything but the download and transcript (`redo_media` too).
+A digest is idempotent: asking again for the same video and focus returns it as it is; a new focus reuses the visual pass, OCR and descriptions and only redoes chapters and summary; `force` redoes everything but the download and transcript (`redo_media` too). A digest made while an engine was missing (no speech-to-text, OCR or vision model running) stays **partial**, and asking again fills in only what was missing. Frames are read and described two at a time.
 
 ## After the digest
 

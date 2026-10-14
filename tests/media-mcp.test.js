@@ -61,11 +61,13 @@ test("media_download through MCP returns the file path, and failures come back a
   assert.equal(ok.body.ok, true);
   assert.equal(ok.body.files[0].path, path.join(mediaDir, "Título bridge1 [bridge1].mp4"));
   assert.ok(fs.existsSync(ok.body.files[0].path));
+  assert.deepEqual(ok.body.deliverables, [{ path: ok.body.files[0].path, name: ok.body.files[0].name }], "the file is offered to the assistant to hand over");
   const status = await call("media_status", { id: ok.body.id });
   assert.equal(status.body.status, "done");
   const bad = await call("media_download", { url: "https://www.youtube.com/gone/bridge2" });
   assert.equal(bad.body.ok, false);
   assert.match(bad.body.error, /no está disponible/);
+  assert.equal(bad.body.deliverables, undefined, "nothing is offered for a failed download");
   const invalid = await call("media_download", { url: "ftp://nope" });
   assert.equal(invalid.isError, true);
 });

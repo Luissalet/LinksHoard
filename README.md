@@ -186,7 +186,7 @@ Tools:
 | `resurface` | What to read today from the saved-but-unread (`count`, default 3); the same list all day, never the same link twice in 14 days. |
 | `reading_plan` | Choose complete unread texts for `minutes`, with `words_per_minute` (default 200), `max_items` (default 5), optional `tag` / `site`; estimates only, no state changes. |
 | `list_tags` | Every tag in use, with counts. |
-| `media_download` | Download the video, audio or photos behind a link; waits and returns the files with absolute paths and sizes (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). |
+| `media_download` | Download the video, audio or photos behind a link; waits and returns the files with absolute paths and sizes (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). A finished download also lists its files in `deliverables`, which Faustus turns into download links for the chat (desktop save dialog, browser or phone). |
 | `media_status` | Progress and result of one download or the recent list. |
 | `media_cancel` | Cancel a waiting or running download. |
 | `media_retry` | Queue a failed or cancelled download again. |

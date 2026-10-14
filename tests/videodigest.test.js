@@ -247,11 +247,21 @@ test("without a vision model or OCR the digest still finishes and says what is m
     const id = await savedLink(s);
     await s.call("POST", `/api/links/${id}/digest`, { path: clip });
     const row = await digest.waitDigest(id, 90_000);
-    assert.equal(row.status, "done", `${row.status}: ${row.error}`);
+    assert.equal(row.status, "partial", `${row.status}: ${row.error}`);
     const view = digest.digestView(id, { level: "card" });
     assert.match(view.text, /Sin OCR de prueba/);
     assert.match(view.text, /no hay un modelo de visión servido/);
     assert.equal(view.stats.engines.vision, null);
+    // once the engines are there, asking again fills only what was missing (the frames are not extracted again)
+    const before = fs.statSync(path.join(digest.digestDir(id), "frames", "v001.jpg")).mtimeMs;
+    digest.setOcrProvider(async () => ({ ok: true, backend: "mock-ocr", text: "AHORA SÍ" }));
+    digest.setChatProvider(mockChat([]));
+    await s.call("POST", `/api/links/${id}/digest`, {});
+    const again = await digest.waitDigest(id, 90_000);
+    assert.equal(again.status, "done");
+    assert.equal(fs.statSync(path.join(digest.digestDir(id), "frames", "v001.jpg")).mtimeMs, before);
+    assert.match(digest.readLayer(id, "visual"), /AHORA SÍ/);
+    assert.match(digest.readLayer(id, "visual"), /Una diapositiva de color liso/);
   } finally { await s.stop(); }
 });
 

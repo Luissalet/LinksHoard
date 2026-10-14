@@ -704,7 +704,9 @@ async function runDigest(id) {
       try { exported = exportCopy(id, s.export_dir, model); } catch (e) { notes.push(`No se pudo copiar a la carpeta de exportación: ${e.message}`); }
     }
     if (exported) stats.exported_to = exported;
-    const complete = mv.transcript.status === "done" || ["no_audio", "no_speech"].includes(mv.transcript.status);
+    // anything that could not be done now (no engine running) leaves the digest partial, so asking again later redoes only that part
+    const complete = (mv.transcript.status === "done" || ["no_audio", "no_speech"].includes(mv.transcript.status))
+      && (!s.ocr || !distinct.length || model.ocr_done) && (!s.vision || !s.vision_max || !distinct.length || model.vision_done);
     patchRow(id, { status: complete && (model.summary !== null || !s.llm) ? "done" : (complete || distinct.length ? "partial" : "failed"), stage: "", detail: notes.join(" "),
       focus: opts.focus || "", source_fp: med.source_fp, stats: JSON.stringify(stats), finished_at: now() });
     family.emit("links.video.digest", { link_id: id, title: model.title, dir, tokens: tokens.brief });

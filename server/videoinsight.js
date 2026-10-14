@@ -154,9 +154,9 @@ export function looksLikeVideo(link) {
 // ---------------------------------------------------------------------------
 
 const videoRoot = () => path.join(dataDir(), "video");
-const linkDir = (id) => path.join(videoRoot(), String(id).replace(/[^\w-]/g, "_"));
+export const linkDir = (id) => path.join(videoRoot(), String(id).replace(/[^\w-]/g, "_"));
 const framesDir = (id) => path.join(linkDir(id), "frames");
-const getMedia = (id) => db().prepare("SELECT * FROM link_media WHERE link_id = ?").get(id) || null;
+export const getMedia = (id) => db().prepare("SELECT * FROM link_media WHERE link_id = ?").get(id) || null;
 
 function patchMedia(id, patch) {
   if (!isOpen()) return;
@@ -256,7 +256,7 @@ export function searchTranscripts(query, limit = 20) {
 // the source of the media
 // ---------------------------------------------------------------------------
 
-const mediaKindOf = (file) => {
+export const mediaKindOf = (file) => {
   const ext = path.extname(file).toLowerCase();
   return VIDEO_EXT.has(ext) ? "video" : AUDIO_EXT.has(ext) ? "audio" : "other";
 };
@@ -355,7 +355,7 @@ async function runStt(wav, opts) {
 // ffmpeg steps
 // ---------------------------------------------------------------------------
 
-async function probeSource(ffmpeg, file, signal) {
+export async function probeSource(ffmpeg, file, signal) {
   const r = await runCapture(ffmpeg.command, ["-hide_banner", "-i", file], { signal, timeoutMs: 30_000 });
   return parseProbe(r.stderr);
 }
@@ -384,7 +384,7 @@ async function extractFrames(ffmpeg, file, id, plan, { width, signal }) {
 }
 
 /** Width and height from the JPEG start-of-frame marker. */
-function jpegSize(file) {
+export function jpegSize(file) {
   try {
     const b = fs.readFileSync(file);
     for (let i = 2; i < b.length - 9;) {
@@ -448,7 +448,7 @@ export async function shutdownVideo() {
 
 class Stop extends Error { constructor(message, code = "STOP") { super(message); this.code = code; } }
 
-async function acquire(link, m, { download }) {
+async function acquire(link, m, { download, maxHeight = 480, maxDurationS = 0 }) {
   const local = m.source_kind === "path" && m.source_path && fs.existsSync(m.source_path)
     ? { path: m.source_path, kind: "path", downloadId: null } : findLocalSource(link);
   if (local) return local;
@@ -457,7 +457,9 @@ async function acquire(link, m, { download }) {
     throw new Stop("No hay un archivo de vídeo para este enlace. Adjunta uno (ruta o subida), descárgalo desde Descargas o activa la descarga automática.", "NO_SOURCE");
   }
   patchMedia(link.id, { detail: "Descargando el vídeo…" });
-  const started = media.startDownload({ url: link.url_original || link.url, format: "video", quality: "480", max_height: 480, max_duration_s: s.max_duration_s, save_link: false });
+  const height = Math.max(144, Math.min(2160, Number(maxHeight) || 480));
+  const started = media.startDownload({ url: link.url_original || link.url, format: "video", quality: String(height), max_height: height,
+    max_duration_s: Math.max(s.max_duration_s, Number(maxDurationS) || 0), save_link: false });
   const done = await media.waitForDownload(started.id, 20 * 60_000);
   if (abort.signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
   if (!done || done.status !== "done") throw new Error(`La descarga del vídeo no terminó (${done?.status || "sin estado"}${done?.error ? `: ${done.error}` : ""}).`);
@@ -477,7 +479,7 @@ async function runJob(id) {
   patchMedia(id, { status: "running", attempts, detail: "Preparando…", next_retry_at: null });
   const wav = path.join(linkDir(id), "audio.wav");
   try {
-    const src = await acquire(link, getMedia(id), { download: !!opts.download });
+    const src = await acquire(link, getMedia(id), { download: !!opts.download, maxHeight: opts.maxHeight, maxDurationS: opts.maxDurationS });
     const fp = fingerprint(src.path);
     m = getMedia(id);
     if (m.source_fp !== fp || opts.force) {
@@ -575,9 +577,10 @@ function settle(id, attempts) {
 
 /**
  * Ask for the analysis of a link. Idempotent: a finished analysis of the same source is returned as it is; one in progress is not started
- * twice. path: a media file to use (it replaces the source); download: allow fetching the video with the app's downloader; force: redo it all.
+ * twice. path: a media file to use (it replaces the source); download: allow fetching the video with the app's downloader (maxHeight and
+ * maxDurationS widen what that download takes: the digest wants readable screen text and long talks); force: redo it all.
  */
-export function requestAnalysis(linkId, { path: file, download = false, force = false, language } = {}) {
+export function requestAnalysis(linkId, { path: file, download = false, force = false, language, maxHeight, maxDurationS } = {}) {
   const link = links.getLink(linkId);
   if (!link) throw Object.assign(new Error("No existe ese enlace."), { status: 404 });
   let m = getMedia(linkId);
@@ -593,7 +596,7 @@ export function requestAnalysis(linkId, { path: file, download = false, force = 
   if (force || given) patch.attempts = 0;
   if (given) Object.assign(patch, { source_kind: "path", source_path: given });
   patchMedia(linkId, patch);
-  pendingOpts.set(linkId, { force, download, language });
+  pendingOpts.set(linkId, { force, download, language, maxHeight, maxDurationS });
   enqueue(linkId);
   return videoView(linkId);
 }

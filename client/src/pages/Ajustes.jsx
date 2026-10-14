@@ -4,6 +4,7 @@ import { useApp } from "../App.jsx";
 import { Page, Section, Field, useAction } from "../components/ui.jsx";
 import { changedFields, refreshDraft } from "../hoard-copilot.js";
 import { useCopilotRefresh } from "../useCopilotRefresh.js";
+import DigestSettings from "../components/DigestSettings.jsx";
 
 function bookmarkletHref(origin) {
   const code = `javascript:(function(){location.href=${JSON.stringify(origin)}+'/share?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title);})();`;
@@ -136,6 +137,8 @@ export default function Ajustes() {
           <div><button type="submit" className="btn btn-primary" disabled={busy}>Guardar</button></div>
         </form>
       </Section>
+
+      <DigestSettings run={run} busy={busy} />
 
       <Section title="Datos" className="mt-4">
         <dl className="grid gap-2 text-[13px] sm:grid-cols-2">

@@ -204,6 +204,38 @@ const MIGRATIONS = [
     text TEXT NOT NULL,
     PRIMARY KEY (link_id, idx)
   );
+  `,
+  // 9: video digest (see videodigest.js): the layered text dossier of a video for an assistant - the job state, and one row per visual
+  // segment of the whole video (its time span, the frame that stands for it, the literal screen text by OCR and the model's description)
+  `
+  CREATE TABLE link_digest (
+    link_id TEXT PRIMARY KEY REFERENCES links(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    stage TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    focus TEXT NOT NULL DEFAULT '',
+    source_fp TEXT NOT NULL DEFAULT '',
+    stats TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT NULL
+  );
+  CREATE INDEX link_digest_status ON link_digest(status);
+  CREATE TABLE link_visual (
+    link_id TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    t_s REAL NOT NULL,
+    file TEXT NOT NULL DEFAULT '',
+    same_as INTEGER NULL,
+    kind TEXT NOT NULL DEFAULT '',
+    caption TEXT NOT NULL DEFAULT '',
+    important INTEGER NOT NULL DEFAULT 0,
+    ocr TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (link_id, idx)
+  );
   `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall
@@ -216,6 +248,7 @@ function tryCreateFts(conn) {
       "CREATE VIRTUAL TABLE IF NOT EXISTS links_fts USING fts5(title, description, content_text, notes, tags, link_id UNINDEXED)",
     );
     conn.exec("CREATE VIRTUAL TABLE IF NOT EXISTS link_segments_fts USING fts5(text, link_id UNINDEXED, idx UNINDEXED)");
+    conn.exec("CREATE VIRTUAL TABLE IF NOT EXISTS link_visual_fts USING fts5(text, link_id UNINDEXED, idx UNINDEXED)");
     ftsAvailable = true;
   } catch {
     ftsAvailable = false;

@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { useAction, ConfirmDialog } from "../components/ui.jsx";
 import VideoInsight from "../components/VideoInsight.jsx";
+import VideoDigest from "../components/VideoDigest.jsx";
 import ArticleQuestions from "../components/ArticleQuestions.jsx";
 import { formatDate, isMediaUrl, kindLabel, readingTime } from "../format.js";
 import { useCopilotRefresh } from "../useCopilotRefresh.js";
@@ -218,6 +219,7 @@ export default function Reader({ linkId, paragraphId, sourceVersion }) {
       ) : null}
 
       <VideoInsight linkId={linkId} kind={link.kind} notify={notify} />
+      <VideoDigest linkId={linkId} kind={link.kind} notify={notify} />
 
       <HighlightPopover rect={selection?.rect} onSave={saveHighlight} onClose={() => setSelection(null)} />
 

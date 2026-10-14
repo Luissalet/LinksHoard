@@ -14,6 +14,8 @@ import { installMediaRoutes } from "./media-routes.js";
 import { initMedia } from "./media.js";
 import { initVideoInsight } from "./videoinsight.js";
 import { installVideoRoutes } from "./video-routes.js";
+import { initVideoDigest } from "./videodigest.js";
+import { installDigestRoutes } from "./digest-routes.js";
 import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +40,8 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   initMedia();
   // Video insight: jobs left unfinished by the last run go back to the queue.
   initVideoInsight();
+  // Video digest: digests left unfinished by the last run go back to the queue.
+  initVideoDigest();
 
   const app = express();
   app.disable("x-powered-by");
@@ -46,6 +50,7 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   installRoutes(app, { version, dataDirConfigured });
   installMediaRoutes(app);
   installVideoRoutes(app);
+  installDigestRoutes(app);
   installAgentRoutes(app, { token });
   const DIST = path.join(ROOT, "dist");
   if (serveStatic && fs.existsSync(DIST)) installSpa(app, DIST, { express });

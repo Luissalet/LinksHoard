@@ -49,6 +49,18 @@ export const api = {
     linkToCards: (linkId, deck) => request("POST", `/api/links/${linkId}/cards`, deck ? { deck } : {}),
   },
   videoSearch: (q) => request("GET", `/api/video/search${qs({ q })}`),
+  videoDigest: {
+    start: (data) => request("POST", "/api/video-digests", data),
+    list: () => request("GET", "/api/video-digests"),
+    get: (id, level, range = {}) => request("GET", `/api/links/${id}/digest${qs({ level, ...range })}`),
+    run: (id, data = {}) => request("POST", `/api/links/${id}/digest`, data),
+    ask: (id, question) => request("POST", `/api/links/${id}/digest/ask`, { question }),
+    search: (q, id) => request("GET", `/api/video-digests/search${qs({ q, id })}`),
+    settings: () => request("GET", "/api/video-digests/settings"),
+    saveSettings: (data) => request("PUT", "/api/video-digests/settings", data),
+    fileUrl: (id, name) => `/api/links/${id}/digest/files/${name}`,
+    frameUrl: (id, t, width = 960) => `/api/links/${id}/digest/frame${qs({ t, width })}`,
+  },
   resurface: (count) => request("GET", `/api/resurface${qs({ count })}`),
   settings: {
     get: () => request("GET", "/api/settings"),

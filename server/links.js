@@ -111,11 +111,12 @@ export function deleteLink(id) {
   if (!existed) return false;
   transaction(() => {
     db().prepare("DELETE FROM highlights WHERE link_id = ?").run(id);
-    for (const table of ["link_frames", "link_segments", "link_media"]) db().prepare(`DELETE FROM ${table} WHERE link_id = ?`).run(id);
+    for (const table of ["link_frames", "link_segments", "link_media", "link_visual", "link_digest"]) db().prepare(`DELETE FROM ${table} WHERE link_id = ?`).run(id);
     db().prepare("DELETE FROM links WHERE id = ?").run(id);
     if (ftsEnabled()) {
       db().prepare("DELETE FROM links_fts WHERE link_id = ?").run(id);
       db().prepare("DELETE FROM link_segments_fts WHERE link_id = ?").run(id);
+      db().prepare("DELETE FROM link_visual_fts WHERE link_id = ?").run(id);
     }
   });
   // the key frames and any uploaded video of this link (see videoinsight.js)

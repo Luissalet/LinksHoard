@@ -10,6 +10,7 @@ import { importTranscript } from "./transcript.js";
 import * as watches from "./watches.js";
 import * as media from "./media.js";
 import * as video from "./videoinsight.js";
+import * as digest from "./videodigest.js";
 import { highlightsToCards, DEFAULT_DECK } from "./cards.js";
 import { resurface, resurfaceSettings } from "./resurface.js";
 import { readingPlan, readingPlanInput } from "./reading-plan.js";
@@ -30,7 +31,8 @@ highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "L
 reading_plan selects complete unread saved texts for the user's available minutes and assumed reading speed. Report estimates, not guaranteed duration. It never fetches pages, marks links read or changes the daily resurfacing list; use read_link before summarizing any selected text.
 Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
 When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.
-For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.`;
+For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
+To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
 
@@ -518,6 +520,64 @@ export const TOOLS = [
     "Search the spoken words of all analysed videos — buscar en transcripciones\nFull-text search over the transcripts of saved videos. Returns the matching lines with the link, the title and the time (seconds and m:ss) where they are said.\nSinónimos: qué vídeo dice, dónde dijo, buscar en los reels, buscar en las transcripciones, frase en un vídeo",
     z.object({ query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).default(20) }), RO,
     (a) => ({ query: a.query, hits: video.searchTranscripts(a.query, a.limit) })),
+
+  tool("video_digest",
+    "Watch a video for you and return a cheap text digest — digiere este vídeo, resume el vídeo del tweet\nDownloads a video link (X/Twitter, YouTube, reels, any yt-dlp site; or path = a local file for a saved link), transcribes it, splits the picture into segments, reads screen text by OCR and summarizes chapters with local models, all on the user's PC. Returns status and the text of level (default brief = card + chapter index) with token counts and the paths of the files (digest.md, frames, contact sheet). focus: what you are looking for, so the summary answers it. Idempotent; queued/running: call again later. force redoes it.\nSinónimos: mira este vídeo, de qué va el vídeo, resúmeme el vídeo, transcribe el tweet, vídeo largo, ver vídeo sin tokens",
+    z.object({
+      url: z.string().trim().min(1).optional(), id: z.string().optional(),
+      path: z.string().trim().min(1).optional().describe("Absolute path of a local video/audio file to use as the source"),
+      focus: z.string().trim().max(500).optional().describe("What you want from the video; the summary answers it and marks the chapters that matter"),
+      level: z.enum(["brief", "card", "index", "visual", "transcript", "full", "none"]).default("brief"),
+      force: z.boolean().default(false), redo_media: z.boolean().default(false).describe("With force: also download and transcribe again"),
+      language: z.string().trim().max(10).optional().describe("Spoken language hint for speech to text (es, en…)"),
+      wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(1800).default(600),
+      max_chars: z.number().int().min(1000).max(400000).default(60000),
+    }), { idempotentHint: true, openWorldHint: true },
+    async (a) => {
+      if (!a.url && !a.id) fail("Indica url o id.");
+      const started = digest.requestDigest({ url: a.url, id: a.id, path: a.path, focus: a.focus, force: a.force, redo_media: a.redo_media, language: a.language });
+      if (a.wait && ["queued", "running"].includes(started.status)) await digest.waitDigest(started.link_id, a.timeout_s * 1000);
+      return digest.digestView(started.link_id, { level: a.level === "none" ? null : a.level, maxChars: a.max_chars });
+    }),
+
+  tool("video_digest_read",
+    "Read one layer or one time span of a video digest — leer el digest, tramo del vídeo\nReturns the text of a finished digest: brief (card + chapter index), card, index, visual (every segment with literal screen text), transcript (literal, timed) or full. from/to (seconds or m:ss) cut the visual and transcript layers to that span, so a long video is read piece by piece.\nSinónimos: lee la transcripción, qué dice entre el minuto 3 y el 5, qué sale en pantalla, capa visual del vídeo",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      level: z.enum(["brief", "card", "index", "visual", "transcript", "full"]).default("brief"),
+      from: z.union([z.string(), z.number()]).optional(), to: z.union([z.string(), z.number()]).optional(),
+      max_chars: z.number().int().min(1000).max(400000).default(60000),
+    }), RO,
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const view = digest.digestView(link.id, { level: a.level, from: a.from ?? null, to: a.to ?? null, maxChars: a.max_chars });
+      if (view.status === "none") fail("Este enlace no tiene digest: llama antes a video_digest.");
+      return view;
+    }),
+
+  tool("video_ask",
+    "Ask a question about a digested video, answered with checked quotes — pregunta al vídeo\nThe local model answers from the transcript and the screen text (OCR) of one video; every sentence carries citations (s = speech, v = screen) with the time and a verbatim quote that the app checked against the source. Sentences whose quotes do not match are dropped. Needs a digest (video_digest) first.\nSinónimos: qué dice el vídeo sobre, en qué minuto habla de, pregúntale al vídeo, dónde explica",
+    z.object({ id: z.string().optional(), url: z.string().optional(), question: z.string().trim().min(1).max(2000) }), RO,
+    async (a) => { const link = resolveLinkOrFail(a); return { title: link.title, ...(await digest.askVideo(link.id, a.question)) }; }),
+
+  tool("video_find",
+    "Search what is said and shown in digested videos — buscar en vídeos, texto en pantalla\nFull-text search over transcripts and screen text (OCR) of one video (id/url) or all of them. Each hit has the time, the line with the lines before and after, or the screen text and its frame path.\nSinónimos: en qué vídeo sale, busca en el vídeo, dónde aparece en pantalla, minuto en que dice",
+    z.object({ query: z.string().trim().min(1).max(200), id: z.string().optional(), url: z.string().optional(), limit: z.number().int().min(1).max(100).default(20) }), RO,
+    (a) => {
+      const link = a.id || a.url ? resolveLinkOrFail(a) : null;
+      return { query: a.query, hits: digest.findInVideos(a.query, { id: link?.id || null, limit: a.limit }) };
+    }),
+
+  tool("video_frame",
+    "The exact frame of a video at an instant — fotograma en el minuto, captura del vídeo\nExtracts the frame at t (seconds or m:ss) of a video whose digest exists and returns its absolute JPEG path, size and the tokens it would cost to look at. Use it only when the digest says the picture matters (a chart, a diagram, a UI).\nSinónimos: captura en el minuto, saca el fotograma, enséñame la imagen del segundo, frame del vídeo",
+    z.object({ id: z.string().optional(), url: z.string().optional(), t: z.union([z.string(), z.number()]), width: z.number().int().min(160).max(1920).default(1024) }),
+    { idempotentHint: true },
+    async (a) => { const link = resolveLinkOrFail(a); return digest.frameAt(link.id, a.t, { width: a.width }); }),
+
+  tool("video_digests",
+    "List the video digests and their state — digests de vídeo, vídeos digeridos\nThe latest digests: title, url, status, stage while running, focus, duration and the tokens of their brief level.\nSinónimos: qué vídeos he digerido, estado del digest, lista de vídeos resumidos",
+    z.object({ limit: z.number().int().min(1).max(200).default(30) }), RO,
+    (a) => ({ digests: digest.listDigests({ limit: a.limit }) })),
 ];
 
 /** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
@@ -525,6 +585,9 @@ export function callTimeoutMs(name, args = {}) {
   if (name === "ask_link") return 105000;
   if ((name === "media_download" || name === "media_retry" || name === "media_audio_for_asr") && args.wait !== false) return ((Number(args.timeout_s) || 150) + 30) * 1000;
   if (name === "link_video_analyze" && args.wait !== false) return ((Number(args.timeout_s) || 120) + 30) * 1000;
+  if (name === "video_digest" && args.wait !== false) return ((Number(args.timeout_s) || 600) + 30) * 1000;
+  if (name === "video_ask") return 960_000;
+  if (name === "video_frame") return 120_000;
   if (name === "media_status" && args.wait_s) return (Number(args.wait_s) + 30) * 1000;
   if (name === "media_tools" && args.update) return 6 * 60_000;
   if (name === "media_probe" || name === "media_info") return 120_000;

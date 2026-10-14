@@ -118,6 +118,10 @@ Rutas REST (con la misma protección local que el resto de `/api`):
 | `GET /api/resurface` | `?count=`: la lista de «Para leer hoy», cada elemento con su `reason`. |
 | `GET /api/settings` · `POST /api/settings` | `{ resurface: { digest, count } }`. |
 
+## Digest de vídeo (ver un vídeo por un asistente)
+
+Pega un enlace (un tweet con vídeo, YouTube, un reel) en la página **Vídeos**, o que un asistente llame a `video_digest`: la app lo descarga, lo transcribe, recorre la imagen entera, lee el texto en pantalla con OCR y escribe capítulos y resumen con los modelos locales del Hub, y deja un dossier por capas en `<datos>/video/<id del enlace>/digest/`: `card.md` (fuente, texto de la publicación, resumen, puntos clave, respuesta a tu foco y lo que cuesta cada capa), `index.md` (capítulos con lo que se dice y se ve), `visual.md` (cada plano con su texto en pantalla literal), `transcript.md`, `digest.md`, un mosaico 4×4 con tiempos y un fotograma por plano distinto. Un asistente lee la ficha y el índice por unos pocos miles de tokens en vez de cientos de miles en fotogramas, y luego pregunta (`video_ask`, con citas literales comprobadas y minuto), busca (`video_find`) o saca el fotograma exacto de un instante (`video_frame`). Lo literal y lo generado van siempre marcados aparte. Desde una consola: `node scripts/digest.mjs <url> --focus "…"`. Detalle, ajustes y límites: [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
+
 ## Normalización de URL (la clave de deduplicación)
 
 Guardar es idempotente sobre una forma normalizada de la URL (la regla compartida de la familia, `normalizeUrl` de `hoard-commons/web.js`): se eliminan `utm_*`, `fbclid`, `gclid`, `mc_*` y parámetros de seguimiento similares, se quita el fragmento, el host se pone en minúsculas, se quitan los puertos por defecto y la barra final (la raíz sola va sin barra), se ordena la consulta y un enlace de empleo de LinkedIn se queda solo con su id. Se acepta `example.com/pagina` sin esquema (recibe `https://`). Al abrir una biblioteca antigua, los enlaces guardados se reasignan una vez a esta forma. Guardar una página ya guardada (aunque cambien los parámetros de seguimiento) devuelve el enlace existente con `existing: true` en lugar de duplicarlo.
@@ -168,8 +172,14 @@ Herramientas:
 | `media_audio_for_asr` | El audio de un enlace como WAV mono de 16 kHz para transcribir (`sections`, `max_duration_s`, `wait`, `timeout_s`). |
 | `media_tools` | Si se encontraron yt-dlp, gallery-dl y ffmpeg, con versiones; `update: true` los actualiza. |
 | `media_delete` | Quitar el registro de una descarga; sus archivos solo con `delete_files` y `confirm`. |
+| `video_digest` | Ver un vídeo en local y devolver un digest de texto por capas (`url` o `id`, `path`, `focus`, `level`, `force`, `wait`, `timeout_s`). Ver [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md). |
+| `video_digest_read` | Una capa (`brief`, `card`, `index`, `visual`, `transcript`, `full`) o un tramo (`from`, `to`) de un digest. |
+| `video_ask` | Una pregunta respondida desde la transcripción y el texto en pantalla, con citas literales comprobadas y minuto. |
+| `video_find` | Buscar palabras dichas y texto en pantalla en uno o todos los vídeos digeridos. |
+| `video_frame` | El fotograma exacto de un instante (`t`, `width`): ruta, tamaño y coste en tokens. |
+| `video_digests` | Los últimos digests y su estado. |
 
-Son 30 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
+Son 43 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
 
 El asistente tiene instrucciones de resumir o citar un enlace solo a partir del texto que devuelve `read_link`, nunca solo del título, y de decir con claridad cuándo una descarga sigue pendiente o falló en lugar de inventar un resumen.
 

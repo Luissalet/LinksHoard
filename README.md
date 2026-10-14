@@ -142,6 +142,10 @@ The transcript is part of the full-text search (`/api/links?q=` and the Bandeja 
 MCP tools: `link_video` (transcript + frames of a link), `link_video_analyze` (start / repeat, waits up to `timeout_s`), `link_video_search`.
 
 Limits: needs ffmpeg; a video with no audio track gets `no_audio`; very long videos are cut at `max_duration_s` for scene detection; no OCR of the frames; the app never downloads a video by itself unless `auto_download` is on.
+
+## Video digest (watch a video for an assistant)
+
+Paste a link (a post on X with a video, YouTube, a reel) on the **Vídeos** page, or have an assistant call `video_digest`: the app downloads it, transcribes it, walks the whole picture, reads the screen text by OCR and writes chapters and a summary with the Hub's local models, then leaves a layered dossier under `<data>/video/<link id>/digest/` — `card.md` (source, post text, summary, key points, answer to your focus, what each layer costs), `index.md` (chapters with what is said and shown), `visual.md` (every visual segment with its literal screen text), `transcript.md`, `digest.md`, a 4×4 mosaic with timestamps and one frame per distinct shot. An assistant reads the brief level (card + index) for a few thousand tokens instead of hundreds of thousands for the frames, then asks (`video_ask`, answers with checked verbatim quotes and times), searches (`video_find`) or pulls the exact frame of an instant (`video_frame`). Literal and generated material are always labelled apart. From a shell: `node scripts/digest.mjs <url> --focus "…"`. Details, settings and limits: [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
 ## URL normalization (the dedupe key)
 
 Saving is idempotent on a normalized form of the URL (the family's shared rule, `normalizeUrl` of `hoard-commons/web.js`): `utm_*`, `fbclid`, `gclid`, `mc_*` and similar tracking params are stripped, the fragment is dropped, the host is lowercased, default ports and a trailing slash are removed (the bare root has no slash), the query is sorted, and a LinkedIn job link keeps only its job id. A scheme-less `example.com/page` is accepted and gets `https://`. When an older library is opened, the saved links are re-keyed to this form once. Saving an already-saved page (even with different tracking params) returns the existing link with `existing: true` instead of duplicating it.
@@ -192,8 +196,14 @@ Tools:
 | `media_audio_for_asr` | The audio of a link as a mono 16 kHz WAV for speech to text (`sections`, `max_duration_s`, `wait`, `timeout_s`). |
 | `media_tools` | Whether yt-dlp, gallery-dl and ffmpeg were found, with versions; `update: true` updates them. |
 | `media_delete` | Remove a download record; its files only with `delete_files` and `confirm`. |
+| `video_digest` | Watch a video locally and return a layered text digest (`url` or `id`, `path`, `focus`, `level`, `force`, `wait`, `timeout_s`). See [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md). |
+| `video_digest_read` | One layer (`brief`, `card`, `index`, `visual`, `transcript`, `full`) or one span (`from`, `to`) of a digest. |
+| `video_ask` | A question answered from the transcript and screen text, with checked verbatim quotes and times. |
+| `video_find` | Search spoken words and screen text in one or all digested videos. |
+| `video_frame` | The exact frame at an instant (`t`, `width`): path, size and token cost. |
+| `video_digests` | The latest digests and their state. |
 
-30 tools in total. `GET /api/agent/tools` always reflects the live list. Tool descriptions end with a `Sinónimos:` line of Spanish words, so a Spanish-speaking user's phrasing ("guarda esto", "resumen de la semana") matches the right tool.
+43 tools in total. `GET /api/agent/tools` always reflects the live list. Tool descriptions end with a `Sinónimos:` line of Spanish words, so a Spanish-speaking user's phrasing ("guarda esto", "resumen de la semana") matches the right tool.
 
 The assistant is instructed to summarize or quote a link only from the text `read_link` returns, never from the title alone, and to say plainly when a fetch is still pending or failed rather than guessing.
 

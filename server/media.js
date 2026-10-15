@@ -40,8 +40,9 @@ import {
   detectPlatform as detectPlatformShared, PLATFORM_NAMES, FORMATS, QUALITIES, STATUSES, ACTIVE_STATUSES, COOKIE_BROWSERS, DEFAULT_MAX_ITEMS,
   fileKind, mimeOf, PARTIAL, cookieAttempts, buildYtdlpArgs, buildGalleryArgs, buildProbeArgs, parseYtdlpLine, ProgressTracker,
   explainFailure, etaSeconds, ytdlpAgeDays, parseCodecs, needsTranscode, normalizeMediaUrl as normalizePublicMediaUrl,
-  MediaQueue, subtitleCues, cuesToText, ytdlpBaseArgs, cookieArgs,
+  MediaQueue, subtitleCues, cuesToText, ytdlpBaseArgs, attemptArgs, withFallbackClients,
 } from "./hoard-commons/media.js";
+import * as sessions from "./site-login.js";
 
 // Links speaks Spanish to its user: the commons' messages come out in Spanish.
 setLanguage("es");
@@ -273,6 +274,7 @@ export function present(row) {
     title: row.title, uploader: row.uploader, upload_date: row.upload_date, description: row.description, duration: row.duration,
     dir: row.dir, files: row.files, total_bytes: row.total_bytes, save_link: row.save_link, playlist: row.playlist, max_items: row.max_items,
     link_id: row.link_id, error: row.error, cookies_browser: row.cookies_browser,
+    login: row.status === "failed" ? loginNeeded(row.url, row.error) : null,
     sections: row.sections, max_duration_s: row.max_duration_s ?? null, max_height: row.max_height ?? null, asr: row.asr,
     created_at: row.created_at, started_at: row.started_at, finished_at: row.finished_at,
   };
@@ -544,9 +546,37 @@ export function revealDownload(id, index = 0) {
 
 const AUTH_NAMES = (attempts) => attempts.filter((a) => a.type === "browser").map((a) => a.name).join(", ");
 
-/** Run fn once per cookie attempt: no cookies first, then the browsers, until one works. */
-async function withCookieAttempts(request, fn) {
-  const attempts = cookieAttempts(request, { cookiesFile: cookiesFileSetting(), browsers: cookieBrowsers() });
+/**
+ * The attempts for one request and URL: the shared order (no cookies, then each browser; a cookies file set in Ajustes wins), with
+ * the session saved by "Iniciar sesión con…" (site-login.js) right after the attempts without cookies, and on YouTube the fallback
+ * player clients after each attempt without cookies (a public video downloads without an account even when YouTube asks this
+ * address to confirm it is not a bot).
+ */
+export function attemptsFor(request, url = "", { cookiesFile = cookiesFileSetting(), browsers = cookieBrowsers(), sessionFile } = {}) {
+  let attempts = cookieAttempts(request, { cookiesFile, browsers });
+  const auto = String(request || "auto").trim().toLowerCase() === "auto";
+  const session = auto && !cookiesFile && url ? (sessionFile ?? sessions.cookiesFileFor(url)) : "";
+  if (session) {
+    const at = attempts.findIndex((a) => a.type !== "none");
+    const cut = at < 0 ? attempts.length : at;
+    attempts = [...attempts.slice(0, cut), { type: "file", path: session, session: true }, ...attempts.slice(cut)];
+  }
+  return url ? withFallbackClients(attempts, url) : attempts;
+}
+
+/** The site whose "Iniciar sesión con…" button a failure needs, as { site, label }, or null. */
+export function loginFor(url) {
+  const site = sessions.siteForUrl(url);
+  return site ? { site: site.id, label: site.label } : null;
+}
+
+const LOGIN_TEXT = /inicia(?:r)? sesi[oó]n|sign in|log ?in|cookies/i;
+/** For a failure message: the site to sign in to when the text says an account is needed, else null. */
+export const loginNeeded = (url, errorText) => (LOGIN_TEXT.test(String(errorText || "")) ? loginFor(url) : null);
+
+/** Run fn once per attempt (see attemptsFor) until one works. */
+async function withCookieAttempts(request, fn, url = "") {
+  const attempts = attemptsFor(request, url);
   let first = null;
   for (let i = 0; i < attempts.length; i++) {
     try {
@@ -559,8 +589,21 @@ async function withCookieAttempts(request, fn) {
       if (i === 0 && error.outdatedLike && autoUpdateDue()) throw error;
     }
   }
-  if (attempts.length > 1 && first) {
-    first.message += ` Probé con las cookies de ${AUTH_NAMES(attempts)} y ninguna sirvió.`;
+  if (first) {
+    const tried = [];
+    if (attempts.some((a) => a.extra)) tried.push("los reproductores alternativos de YouTube (sin cuenta)");
+    if (attempts.some((a) => a.session)) tried.push("tu sesión guardada en Links");
+    if (AUTH_NAMES(attempts)) tried.push(`las cookies de ${AUTH_NAMES(attempts)}`);
+    if (tried.length) first.message += ` Probé con ${tried.join(", ")} y ${tried.length === 1 && AUTH_NAMES(attempts) ? "ninguna" : "nada"} sirvió.`;
+    const login = first.authLike ? loginFor(url) : null;
+    if (login) {
+      const hadSession = attempts.some((a) => a.session);
+      first.message += hadSession
+        ? ` La sesión de ${login.label} guardada en Links ya no vale: pulsa «Iniciar sesión con ${login.label}» otra vez.`
+        : ` Pulsa «Iniciar sesión con ${login.label}» (en la descarga o en Ajustes → Descargas) y vuelve a intentarlo.`;
+      first.details = { ...(first.details || {}), login };
+      first.hint = first.hint || `Iniciar sesión con ${login.label}: Links abre una ventana del navegador en este equipo y guarda la sesión.`;
+    }
   }
   throw first;
 }
@@ -725,7 +768,7 @@ function pickMeta(metas, playlist) {
 }
 
 async function viaYtdlp(row, ctx) {
-  const { value, attempt } = await withCookieAttempts(row.cookies_request, (cookie) => ytdlpOnce(row, ctx, cookie));
+  const { value, attempt } = await withCookieAttempts(row.cookies_request, (cookie) => ytdlpOnce(row, ctx, cookie), row.url);
   let files = value.files.map(fileRecord);
   if (row.asr) files = await toAsrWav(files, row, ctx);
   else if (row.format !== "audio") files = await ensurePlayable(files, row, ctx);
@@ -851,7 +894,7 @@ async function viaGallery(row, ctx) {
   let folder = uniquePath(path.join(row.dir, safeName(`${row.platform.replace(/ \(.*\)$/, "")} ${stamp}`)));
   ctx.galleryFolder = folder;
   patchRow(row.id, { detail: "Descargando fotos con gallery-dl…" });
-  const { value, attempt } = await withCookieAttempts(row.cookies_request, (cookie) => galleryOnce(row, ctx, cookie, folder));
+  const { value, attempt } = await withCookieAttempts(row.cookies_request, (cookie) => galleryOnce(row, ctx, cookie, folder), row.url);
   let meta = { description: "", uploader: "", upload_date: "", title: "" };
   for (const j of value.jsons) {
     try { meta = pickGalleryMeta(JSON.parse(fs.readFileSync(j, "utf8"))); if (meta.description || meta.uploader) break; } catch { /* next */ }
@@ -973,7 +1016,7 @@ async function runDownload(id, signal) {
       status: "processing", detail: "Guardando…", progress: 99, speed: "", eta: "",
       kind: out.kind, title: meta.title || path.basename(files[0]?.name || "", path.extname(files[0]?.name || "")),
       uploader: meta.uploader || "", upload_date: meta.upload_date || "", description: (meta.description || "").slice(0, 20000),
-      duration: meta.duration ?? null, cookies_browser: out.cookie?.type === "browser" ? out.cookie.name : (out.cookie?.type === "file" ? "archivo de cookies" : ""),
+      duration: meta.duration ?? null, cookies_browser: out.cookie?.type === "browser" ? out.cookie.name : (out.cookie?.session ? "sesión de Links" : (out.cookie?.type === "file" ? "archivo de cookies" : "")),
       files: JSON.stringify(files), total_bytes: total,
     });
     let linkId = null;
@@ -1077,7 +1120,7 @@ export async function probeUrl(input = {}) {
   if (!ytdlp.found) throw missingTool("ytdlp");
   let info;
   try {
-    ({ value: info } = await withCookieAttempts(data.cookies_browser, (cookie) => ytdlpJson(ytdlp, url, cookie, { playlist: data.playlist })));
+    ({ value: info } = await withCookieAttempts(data.cookies_browser, (cookie) => ytdlpJson(ytdlp, url, cookie, { playlist: data.playlist }), url));
   } catch (error) {
     if (!(error.noVideo || error.unsupported)) throw error;
     if (!gallerydl.found) {
@@ -1156,7 +1199,7 @@ export async function getSubtitles(input = {}) {
       const args = [
         ...ytdlpBaseArgs({ version: ytdlp.version }),
         "--skip-download", "--no-warnings", "--no-playlist", track.source === "manual" ? "--write-subs" : "--write-auto-subs",
-        "--sub-langs", track.lang, "--sub-format", "vtt", ...cookieArgs(cookie), "-P", folder, "-o", "sub.%(ext)s", "--", url,
+        "--sub-langs", track.lang, "--sub-format", "vtt", ...attemptArgs(cookie), "-P", folder, "-o", "sub.%(ext)s", "--", url,
       ];
       const r = await runProcess(ytdlp.command, args, { timeoutMs: 90_000 });
       const file = fs.readdirSync(folder).find((n) => n.endsWith(".vtt"));
@@ -1170,5 +1213,5 @@ export async function getSubtitles(input = {}) {
       fs.rmSync(folder, { recursive: true, force: true });
     }
   };
-  return (await withCookieAttempts(data.cookies_browser, work)).value;
+  return (await withCookieAttempts(data.cookies_browser, work, url)).value;
 }

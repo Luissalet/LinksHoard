@@ -4,6 +4,7 @@ import { useApp } from "../App.jsx";
 import { Page, Section, Field, Empty, useAction } from "../components/ui.jsx";
 import { formatBytes, formatDate, formatDuration } from "../format.js";
 import { useCopilotRefresh } from "../useCopilotRefresh.js";
+import { LoginButton } from "../components/SiteLogin.jsx";
 
 const STATUS = {
   queued: { label: "En cola", chip: "chip" },
@@ -74,6 +75,7 @@ function Item({ item, onChange, run, busy }) {
             </div>
           )}
           {item.status === "failed" && <p className="mt-1 text-[12.5px]" style={{ color: "var(--danger-ink)" }}>{item.error}</p>}
+          {item.status === "failed" && item.login && <LoginButton login={item.login} onSaved={retry} className="mt-2" />}
           {item.status === "cancelled" && <p className="help mt-1 text-[12px]">Cancelada.</p>}
           {item.status === "done" && item.detail && <p className="help mt-1 text-[12px]">{item.detail}</p>}
           {item.status === "done" && item.cookies_browser && <p className="help mt-1 text-[12px]">Se usaron las cookies de: {item.cookies_browser}.</p>}

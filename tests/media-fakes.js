@@ -15,6 +15,8 @@
 //   /flaky/<id>      fails with a network error until $FAKE_DIR/flaky-ok exists
 //   /blocked/<id>    HTTP 403 on the video data while the version is the old 2026.01.01 (an update fixes it)
 //   /long/<id>       a 2 h 10 min video (the info says duration 7800), for max_duration_s
+//   /botcheck/<id>   (on youtube.com) "Sign in to confirm you're not a bot" unless the fallback player clients are asked for
+//   /agegate/<id>    (on youtube.com) "Sign in to confirm your age" unless --cookies points into a sessions folder
 //   /subs/<id>       manual Spanish captions; /autosubs/<id> only automatic English ones; /nosubs/<id> none
 //                    (every other video has manual English and automatic Spanish + English)
 //   --download-sections "*s-e" / -o <template> are honoured: the file name comes from the template, [part N] included
@@ -47,6 +49,9 @@ const version = () => { try { return fs.readFileSync(versionFile, "utf8").trim()
   if (has("-U")) { log(); fs.writeFileSync(versionFile, "2026.02.02"); console.log("Updated yt-dlp to 2026.02.02"); return; }
   log();
   const cookie = arg("--cookies-from-browser");
+  const clients = arg("--extractor-args") || "";
+  if (kind === "botcheck" && !/web_embedded/.test(clients)) { console.error("ERROR: [youtube] " + id + ": Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies for the authentication."); process.exit(1); }
+  if (kind === "agegate" && !String(arg("--cookies") || "").includes("sessions")) { console.error("ERROR: [youtube] " + id + ": Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication."); process.exit(1); }
   if (has("--dump-single-json")) {
     if (kind === "photos") { console.error("ERROR: [Instagram] " + id + ": There is no video in this post"); process.exit(1); }
     if (kind === "gone") { console.error("ERROR: [youtube] " + id + ": Video unavailable"); process.exit(1); }

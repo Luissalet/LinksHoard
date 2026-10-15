@@ -4,6 +4,7 @@ import { useApp } from "../App.jsx";
 import { Page, Section, Field, Empty, useAction } from "../components/ui.jsx";
 import { DIGEST_STATUS } from "../components/VideoDigest.jsx";
 import { formatDuration } from "../format.js";
+import { LoginButton } from "../components/SiteLogin.jsx";
 
 const CHIP = { done: "chip chip-ok", partial: "chip chip-warn", failed: "chip chip-danger", queued: "chip", running: "chip chip-accent" };
 
@@ -50,6 +51,10 @@ export default function Videos() {
                   {d.tokens ? <span className="chip">≈ {d.tokens} tokens</span> : null}
                   <span className={CHIP[d.status] || "chip"} title={d.detail || ""}>{d.status === "running" && d.stage ? `Procesando · ${d.stage}` : (DIGEST_STATUS[d.status] || d.status).replace(/\.$/, "")}</span>
                 </span>
+                {d.status === "failed" && d.error && <p className="w-full text-[12px]" style={{ color: "var(--danger-ink)" }}>{d.error}</p>}
+                {d.status === "failed" && d.login && (
+                  <LoginButton className="w-full" login={d.login} onSaved={() => run(() => api.videoDigest.run(d.link_id, {}), "Digest en marcha de nuevo con la sesión guardada.").then(load)} />
+                )}
               </li>
             ))}
           </ul>

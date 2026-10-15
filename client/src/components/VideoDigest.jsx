@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
+import { LoginButton } from "./SiteLogin.jsx";
 
 export const DIGEST_STATUS = {
   none: "Sin digest todavía.",
@@ -87,6 +88,7 @@ export default function VideoDigest({ linkId, kind, notify }) {
         {running && view.detail ? <> {view.detail}</> : null}
         {view.status === "failed" && view.error ? <> {view.error}</> : null}
       </p>
+      {view.status === "failed" && view.login && <LoginButton login={view.login} onSaved={() => start()} className="mt-2" />}
       {ready && (
         <>
           <div className="mt-3 flex flex-wrap gap-2 text-[12px]" data-testid="digest-tokens">

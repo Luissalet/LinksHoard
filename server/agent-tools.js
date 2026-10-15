@@ -485,18 +485,20 @@ export const TOOLS = [
     }),
 
   tool("site_sessions",
-    "Which sites Links is signed in to for downloads — sesiones guardadas, iniciar sesión en YouTube/X/Instagram\nLists the sites with a login button (YouTube, X, Instagram, Threads, TikTok, Facebook, Reddit, Twitch, Vimeo, Pinterest, SoundCloud, Bilibili, Patreon): whether Links holds a signed-in session for each, since when, the browser it uses and the login window if one is open (state: opening, waiting, signing, saved, capturing, closed, expired, failed). No cookie values are returned.\nSinónimos: con qué cuentas está conectado Links, sesiones de descarga, estoy logueado en YouTube, cookies de descargas",
+    "Which sites Links is signed in to for downloads — sesiones guardadas, iniciar sesión en YouTube/X/Instagram\nLists the browsers it can use (the system default first; choice auto follows the default) and the sites with a login button (YouTube, X, Instagram, Threads, TikTok, Facebook, Reddit, Twitch, Vimeo, Pinterest, SoundCloud, Bilibili, Patreon): whether Links holds a signed-in session for each, since when, the browser it uses and the login window if one is open (state: opening, waiting, signing, saved, capturing, closed, expired, failed). No cookie values are returned.\nSinónimos: con qué cuentas está conectado Links, sesiones de descarga, estoy logueado en YouTube, cookies de descargas",
     z.object({}), RO,
     () => sessions.list()),
 
   tool("site_login",
-    "Open a sign-in window so downloads can use the account — iniciar sesión con YouTube, X, Instagram…\nOpens a window of the installed Chrome/Edge/Brave on the computer where Links runs, on that site's login page, with a browser profile of Links' own. The user signs in there themselves; Links saves the session on its own and closes the window (or call with finish: true once they say they are done). Use it after a download failed with login, then media_retry. Never ask the user for their password and never type it.\nSinónimos: inicia sesión en youtube para descargar, conéctate a mi cuenta de instagram, loguéate en X, usar mi cuenta para descargar",
+    "Open a sign-in window so downloads can use the account — iniciar sesión con YouTube, X, Instagram…\nOpens a window of the user's default browser when it is a Chromium one (Brave, Chrome, Edge, Vivaldi…; else the first installed) on the computer where Links runs, on that site's login page, with a browser profile of Links' own. The user signs in there themselves; Links saves the session on its own and closes the window (or call with finish: true once they say they are done). Use it after a download failed with login, then media_retry. Never ask the user for their password and never type it.\nSinónimos: inicia sesión en youtube para descargar, conéctate a mi cuenta de instagram, loguéate en X, usar mi cuenta para descargar",
     z.object({
       site: z.string().trim().min(1).max(40).describe("Site id: youtube, x, instagram, threads, tiktok, facebook, reddit, twitch, vimeo, pinterest, soundcloud, bilibili, patreon"),
       finish: z.boolean().default(false).describe("The user says they finished: read the session now and close the window"),
       cancel: z.boolean().default(false).describe("Close the window without waiting"),
+      browser: z.string().trim().max(40).optional().describe("Browser to use from now on (a name from site_sessions browsers, or auto = the system default); omit to keep the current one"),
     }), { openWorldHint: true },
     async (a) => {
+      if (a.browser) sessions.setBrowserChoice(a.browser);
       if (a.cancel) { await sessions.cancelLogin(); return sessions.list(); }
       if (a.finish) { await sessions.finishLogin(); return sessions.list(); }
       await sessions.startLogin(a.site);

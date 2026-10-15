@@ -32,6 +32,9 @@ export function installMediaRoutes(app) {
   app.get("/api/sessions", (req, res, next) => {
     try { res.json(sessions.list()); } catch (e) { next(e); }
   });
+  app.put("/api/sessions/settings", (req, res, next) => {
+    try { res.json(sessions.setBrowserChoice(req.body?.browser)); } catch (e) { next(e); }
+  });
   app.post("/api/sessions/finish", async (req, res, next) => {
     try { await sessions.finishLogin(); res.json(sessions.list()); } catch (e) { next(e); }
   });

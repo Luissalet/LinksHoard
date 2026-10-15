@@ -14,8 +14,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { dataDir, now } from "./db.js";
+import { spawn, execFileSync } from "node:child_process";
+import { dataDir, now, getSetting, setSetting } from "./db.js";
 
 /** The sites with a login button: where to sign in, which cookie domains belong to them and which cookie says "signed in". */
 export const SITES = [
@@ -92,7 +92,9 @@ export function toNetscape(cookies) {
 // ---------------------------------------------------------------------------
 
 const baseDir = () => path.join(process.env.LINKS_SESSIONS_DIR || path.join(dataDir() || path.join(os.homedir(), ".links-hoard"), "sessions"));
-export const profileDir = () => path.join(baseDir(), "browser-profile");
+const slug = (name) => String(name || "browser").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "browser";
+/** The profile of the browser in use (one per browser: their cookie stores cannot be shared). */
+export const profileDir = (browser = findBrowser()) => path.join(baseDir(), `browser-profile-${slug(browser?.name)}`);
 export const cookiesPath = () => path.join(baseDir(), "cookies.txt");
 const statusPath = () => path.join(baseDir(), "status.json");
 
@@ -140,7 +142,6 @@ export function cookiesFileFor(url) {
 export function browserCandidates({ env = process.env, platform = process.platform } = {}) {
   const out = [];
   const add = (name, p) => { if (p) out.push({ name, path: p }); };
-  if (env.LINKS_LOGIN_BROWSER) add("custom", env.LINKS_LOGIN_BROWSER);
   if (platform === "win32") {
     const pf = env.ProgramFiles || "C:\\Program Files";
     const pf86 = env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
@@ -148,25 +149,112 @@ export function browserCandidates({ env = process.env, platform = process.platfo
     for (const root of [pf, pf86, local]) add("Chrome", path.win32.join(root, "Google", "Chrome", "Application", "chrome.exe"));
     for (const root of [pf86, pf]) add("Edge", path.win32.join(root, "Microsoft", "Edge", "Application", "msedge.exe"));
     for (const root of [pf, pf86, local]) add("Brave", path.win32.join(root, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"));
+    add("Vivaldi", path.win32.join(local, "Vivaldi", "Application", "vivaldi.exe"));
     add("Chromium", path.win32.join(local, "Chromium", "Application", "chrome.exe"));
   } else if (platform === "darwin") {
     add("Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
     add("Edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge");
     add("Brave", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser");
+    add("Vivaldi", "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi");
     add("Chromium", "/Applications/Chromium.app/Contents/MacOS/Chromium");
   } else {
-    for (const [name, bin] of [["Chrome", "google-chrome"], ["Chrome", "google-chrome-stable"], ["Edge", "microsoft-edge"], ["Brave", "brave-browser"], ["Chromium", "chromium"], ["Chromium", "chromium-browser"]]) {
+    for (const [name, bin] of LINUX_BINS) {
       for (const dir of String(env.PATH || "").split(path.delimiter).filter(Boolean)) add(name, path.join(dir, bin));
     }
   }
   return out;
 }
 
-/** The first installed browser. LINKS_LOGIN_BROWSER may also be "node:<script>" (a script run with this Node, which the tests use). */
-export function findBrowser({ env = process.env, platform = process.platform, exists = fs.existsSync } = {}) {
+const LINUX_BINS = [["Chrome", "google-chrome"], ["Chrome", "google-chrome-stable"], ["Edge", "microsoft-edge"], ["Brave", "brave-browser"], ["Brave", "brave"],
+  ["Vivaldi", "vivaldi"], ["Chromium", "chromium"], ["Chromium", "chromium-browser"]];
+
+/** Chromium browsers by executable (the only ones with the DevTools port this needs); anything else (Firefox, Safari) is not usable. */
+const CHROMIUM_EXES = { "brave.exe": "Brave", "chrome.exe": "Chrome", "msedge.exe": "Edge", "vivaldi.exe": "Vivaldi", "opera.exe": "Opera", "chromium.exe": "Chromium",
+  "brave-browser": "Brave", brave: "Brave", "google-chrome": "Chrome", "google-chrome-stable": "Chrome", "microsoft-edge": "Edge", vivaldi: "Vivaldi", chromium: "Chromium", "chromium-browser": "Chromium" };
+
+/** The executable at the start of a shell open command ("C:\\…\\brave.exe" --single-argument %1 → C:\\…\\brave.exe). */
+export function exeFromCommand(command) {
+  const m = String(command || "").trim().match(/^"([^"]+)"|^(\S+)/);
+  return m ? (m[1] || m[2]) : "";
+}
+
+/** "Brave", "Chrome", … for a Chromium browser's executable, or null (Firefox and other engines). */
+export function browserNameOf(exe) {
+  const base = String(exe || "").split(/[\\/]/).pop().toLowerCase();
+  return CHROMIUM_EXES[base] || null;
+}
+
+/** The value of one entry in `reg query` output (`name` "" = the first value, which is the default one with /ve). */
+export function regValue(stdout, name = "") {
+  for (const line of String(stdout || "").split(/\r?\n/)) {
+    const m = line.match(/^\s+(.+?)\s+REG_(?:SZ|EXPAND_SZ)\s+(.*)$/);
+    if (m && (!name || m[1].toLowerCase() === name.toLowerCase())) return m[2].trim();
+  }
+  return "";
+}
+
+const runQuiet = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", timeout: 4000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+let defaultCache = { at: 0, value: undefined };
+
+/**
+ * The system's default browser as { name, path, usable }: on Windows the https handler of the current user (UserChoice ProgId and its
+ * open command), on Linux xdg-settings. usable is false for a browser without the DevTools port (Firefox…). null when unknown.
+ */
+export function defaultBrowser({ platform = process.platform, run = runQuiet, fresh = false } = {}) {
+  if (!fresh && defaultCache.platform === platform && defaultCache.value !== undefined && Date.now() - defaultCache.at < 5 * 60_000) return defaultCache.value;
+  let value = null;
+  try {
+    if (platform === "win32") {
+      const progId = regValue(run("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice", "/v", "ProgId"]), "ProgId");
+      if (progId) {
+        const exe = exeFromCommand(regValue(run("reg", ["query", `HKCR\\${progId}\\shell\\open\\command`, "/ve"])));
+        const name = browserNameOf(exe);
+        value = exe ? { name: name || path.win32.basename(exe, ".exe"), path: exe, usable: !!name, prog_id: progId } : null;
+      }
+    } else if (platform === "linux") {
+      const desktop = String(run("xdg-settings", ["get", "default-web-browser"]) || "").trim().replace(/\.desktop$/, "");
+      const name = browserNameOf(desktop);
+      const bin = LINUX_BINS.find(([n]) => n === name)?.[1];
+      value = desktop ? { name: name || desktop, path: bin || desktop, usable: !!name, desktop } : null;
+    }
+  } catch { value = null; }
+  defaultCache = { at: Date.now(), value, platform };
+  return value;
+}
+
+const choiceSetting = () => { try { return String(getSetting("sessions.browser", "auto") || "auto"); } catch { return "auto"; } };
+
+/** The Chromium browsers installed here, one per name, the default one marked (and first). */
+export function installedBrowsers({ env = process.env, platform = process.platform, exists = fs.existsSync, fallback } = {}) {
+  const def = fallback !== undefined ? fallback : defaultBrowser({ platform });
+  const seen = new Map();
+  if (def?.usable && exists(def.path)) seen.set(def.name, { name: def.name, path: def.path, default: true });
+  for (const c of browserCandidates({ env, platform })) if (!seen.has(c.name) && exists(c.path)) seen.set(c.name, { ...c, default: false });
+  return [...seen.values()];
+}
+
+/**
+ * The browser for the sign-in window: LINKS_LOGIN_BROWSER (a path, or "node:<script>" which the tests use), else the one chosen in
+ * Ajustes (sessions.browser), else the system's default browser when it is a Chromium one, else Chrome, Edge, Brave, Vivaldi, Chromium.
+ */
+export function findBrowser({ env = process.env, platform = process.platform, exists = fs.existsSync, choice = choiceSetting(), fallback } = {}) {
   const custom = String(env.LINKS_LOGIN_BROWSER || "");
   if (custom.startsWith("node:")) return exists(custom.slice(5)) ? { name: "custom", path: custom } : null;
-  return browserCandidates({ env, platform }).find((c) => exists(c.path)) || null;
+  if (custom) return exists(custom) ? { name: browserNameOf(custom) || "custom", path: custom } : null;
+  const all = installedBrowsers({ env, platform, exists, fallback });
+  const wanted = choice && choice !== "auto" ? all.find((b) => b.name.toLowerCase() === choice.toLowerCase()) : null;
+  const pick = wanted || all[0];
+  return pick ? { name: pick.name, path: pick.path } : null;
+}
+
+/** Ajustes: which browser the sign-in window uses ("auto" = the default one). */
+export function setBrowserChoice(choice) {
+  const value = String(choice || "auto").trim();
+  if (value !== "auto" && !installedBrowsers().some((b) => b.name.toLowerCase() === value.toLowerCase())) {
+    throw new SessionError(`«${value}» no está instalado o no sirve para iniciar sesión (hace falta un navegador Chromium: Chrome, Edge, Brave, Vivaldi…).`, { status: 400 });
+  }
+  setSetting("sessions.browser", value);
+  return list();
 }
 
 const command = (browser) => (browser.path.startsWith("node:") ? { cmd: process.execPath, pre: [browser.path.slice(5)] } : { cmd: browser.path, pre: [] });
@@ -237,7 +325,7 @@ const alive = (proc) => proc && proc.exitCode === null && proc.signalCode === nu
 
 /** Starts the browser on Links' profile with the DevTools port on 127.0.0.1 and waits for its WebSocket address. */
 async function launch(browser, extraArgs, { timeoutMs = 25000 } = {}) {
-  const profile = profileDir();
+  const profile = profileDir(browser);
   fs.mkdirSync(profile, { recursive: true });
   const portFile = path.join(profile, "DevToolsActivePort");
   try { fs.rmSync(portFile, { force: true }); } catch { /* in use: a stale browser still holds it */ }
@@ -374,7 +462,7 @@ export async function startLogin(id) {
   current = { site: site.id, browser: browser.name, handle: null, state: "opening", detail: `Abriendo ${browser.name}…`, started_at: now(), startedMs: Date.now(), seenAt: 0, timer: null };
   const c = current;
   changed();
-  c.fresh = !fs.existsSync(path.join(profileDir(), "Local State"));
+  c.fresh = !fs.existsSync(path.join(profileDir(browser), "Local State"));
   try {
     await openWindow(c);
   } catch (error) {
@@ -458,7 +546,14 @@ export function view() {
 /** Everything the settings page and the tools show: the browser found, each site's state and the open window. */
 export function list() {
   const browser = findBrowser();
-  return { browser: browser ? { name: browser.name, path: browser.path } : null, sites: sitesView(), ...view(), cookies_file: fs.existsSync(cookiesPath()) ? cookiesPath() : null };
+  const def = defaultBrowser();
+  return {
+    browser: browser ? { name: browser.name, path: browser.path } : null,
+    choice: choiceSetting(),
+    browsers: installedBrowsers().map((b) => ({ name: b.name, default: b.default })),
+    default_browser: def ? { name: def.name, usable: def.usable } : null,
+    sites: sitesView(), ...view(), cookies_file: fs.existsSync(cookiesPath()) ? cookiesPath() : null,
+  };
 }
 
 /** Closes the login window when the app stops. */

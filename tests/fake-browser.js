@@ -10,7 +10,9 @@ import crypto from "node:crypto";
 const args = process.argv.slice(2);
 const profile = (args.find((a) => a.startsWith("--user-data-dir=")) || "").slice("--user-data-dir=".length);
 fs.mkdirSync(profile, { recursive: true });
-fs.appendFileSync(path.join(profile, "fake-launches.jsonl"), `${JSON.stringify(args)}\n`);
+const launchLog = path.join(profile, "fake-launches.jsonl");
+const firstLaunch = !fs.existsSync(launchLog);
+fs.appendFileSync(launchLog, `${JSON.stringify(args)}\n`);
 const jar = path.join(profile, "fake-cookies.json");
 const readJar = () => { try { return JSON.parse(fs.readFileSync(jar, "utf8")); } catch { return []; } };
 const writeJar = (cookies) => fs.writeFileSync(jar, JSON.stringify(cookies));
@@ -61,4 +63,5 @@ server.on("upgrade", (req, socket) => {
 server.listen(0, "127.0.0.1", () => {
   fs.writeFileSync(path.join(profile, "DevToolsActivePort"), `${server.address().port}\n/devtools/browser/fake`);
 });
-if (args.includes("--fake-crash")) process.exit(3);
+// FAKE_BROWSER_QUIT_FIRST=1: like a real browser finishing a new profile's setup, the very first window quits on its own
+if (firstLaunch && process.env.FAKE_BROWSER_QUIT_FIRST === "1" && !args.includes("--headless=new")) setTimeout(() => process.exit(0), 300);

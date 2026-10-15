@@ -103,6 +103,20 @@ test("the attempts: no cookies, YouTube's fallback players, the saved session, t
   assert.ok(none.every((a) => a.type === "none"));
 });
 
+test("a new profile whose first window quits on its own is opened again once", async () => {
+  // runs first: the profile does not exist yet
+  process.env.FAKE_BROWSER_QUIT_FIRST = "1";
+  try {
+    const opened = await s.call("POST", "/api/sessions/vimeo/login");
+    assert.equal(opened.status, 202, JSON.stringify(opened.body));
+    await until(() => launches().length >= 2, 8000);
+    const r = await until(async () => { const b = (await s.call("GET", "/api/sessions")).body; return b.active?.state === "waiting" && b.active.open ? b : null; });
+    assert.equal(r.active.site, "vimeo");
+    assert.ok(launches().every((a) => !a.includes("--headless=new")), "reopened as a window, not read headless");
+    await s.call("POST", "/api/sessions/cancel");
+  } finally { delete process.env.FAKE_BROWSER_QUIT_FIRST; }
+});
+
 test("a public YouTube video under the bot check downloads through the fallback players, without an account", async () => {
   const before = ytCalls().length;
   const done = await run({ url: "https://www.youtube.com/botcheck/b1" });

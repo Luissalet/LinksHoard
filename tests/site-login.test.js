@@ -79,15 +79,40 @@ test("sites by URL, the login cookie and the Netscape file", () => {
   assert.ok(lines.includes("www.youtube.com\tFALSE\t/\tFALSE\t0\ts\tv"), "a session cookie gets expiry 0 and a host-only domain FALSE");
 });
 
-test("browser discovery: Chrome first, then Edge, Brave and Chromium; a node: script for the tests", () => {
+test("browser discovery: the default browser first, then Chrome, Edge, Brave…; the choice in Ajustes wins", () => {
   const env = { ProgramFiles: "C:\\PF", "ProgramFiles(x86)": "C:\\PF86", LOCALAPPDATA: "C:\\U\\AppData\\Local" };
   const names = sessions.browserCandidates({ env, platform: "win32" }).map((c) => c.name);
   assert.equal(names[0], "Chrome");
   assert.ok(names.indexOf("Edge") > names.lastIndexOf("Chrome") && names.indexOf("Brave") > names.lastIndexOf("Edge"));
-  const edgeOnly = sessions.findBrowser({ env, platform: "win32", exists: (p) => p.endsWith("msedge.exe") });
-  assert.equal(edgeOnly.name, "Edge");
-  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: () => false }), null);
+  const all = () => true;
+  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: (p) => p.endsWith("msedge.exe"), choice: "auto", fallback: null }).name, "Edge");
+  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: () => false, choice: "auto", fallback: null }), null);
   assert.equal(sessions.findBrowser({ env: { LINKS_LOGIN_BROWSER: "node:/nope.js" }, platform: "linux", exists: () => false }), null);
+
+  // the system default (Brave here) goes first; a Firefox default is skipped; a choice in Ajustes wins over both
+  const brave = { name: "Brave", path: "C:\\PF\\BraveSoftware\\Brave-Browser\\Application\\brave.exe", usable: true };
+  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: all, choice: "auto", fallback: brave }).name, "Brave");
+  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: all, choice: "auto", fallback: { name: "firefox", path: "C:\\ff\\firefox.exe", usable: false } }).name, "Chrome");
+  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: all, choice: "Edge", fallback: brave }).name, "Edge");
+  assert.equal(sessions.findBrowser({ env, platform: "win32", exists: all, choice: "Opera", fallback: brave }).name, "Brave", "a choice that is not installed falls back");
+  const list = sessions.installedBrowsers({ env, platform: "win32", exists: all, fallback: brave });
+  assert.deepEqual(list.map((b) => [b.name, b.default]).slice(0, 3), [["Brave", true], ["Chrome", false], ["Edge", false]]);
+  assert.equal(list.filter((b) => b.name === "Brave").length, 1);
+});
+
+test("the default browser is read from the registry (Windows) and xdg-settings (Linux)", () => {
+  const reg = (cmd, args) => {
+    if (args.includes("ProgId")) return "\r\nHKEY_CURRENT_USER\\Software\\...\\UserChoice\r\n    ProgId    REG_SZ    BraveHTML\r\n";
+    return "\r\nHKEY_CLASSES_ROOT\\BraveHTML\\shell\\open\\command\r\n    (Predeterminado)    REG_SZ    \"C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe\" --single-argument %1\r\n";
+  };
+  const win = sessions.defaultBrowser({ platform: "win32", run: reg, fresh: true });
+  assert.deepEqual(win, { name: "Brave", path: "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe", usable: true, prog_id: "BraveHTML" });
+  const ff = sessions.defaultBrowser({ platform: "win32", fresh: true, run: (c, a) => (a.includes("ProgId") ? "    ProgId    REG_SZ    FirefoxURL-308046B0AF4A39CB" : "    (Default)    REG_SZ    \"C:\\Program Files\\Mozilla Firefox\\firefox.exe\" -osint -url \"%1\"") });
+  assert.equal(ff.usable, false);
+  const lin = sessions.defaultBrowser({ platform: "linux", fresh: true, run: () => "brave-browser.desktop\n" });
+  assert.deepEqual(lin, { name: "Brave", path: "brave-browser", usable: true, desktop: "brave-browser" });
+  assert.equal(sessions.defaultBrowser({ platform: "win32", fresh: true, run: () => { throw new Error("no reg"); } }), null);
+  sessions.defaultBrowser({ platform: process.platform, fresh: true });
 });
 
 test("the attempts: no cookies, YouTube's fallback players, the saved session, then the browsers", () => {
@@ -216,6 +241,12 @@ test("the MCP tools: site_sessions, site_login (start and finish) and site_logou
   assert.equal(done.body.sites.find((x) => x.id === "tiktok").logged_in, true);
   const gone = await s.agent("site_logout", { site: "tiktok" });
   assert.equal(gone.body.sites.find((x) => x.id === "tiktok").logged_in, false);
+  const bad = await s.call("PUT", "/api/sessions/settings", { browser: "Netscape" });
+  assert.equal(bad.status, 400);
+  const auto = await s.call("PUT", "/api/sessions/settings", { browser: "auto" });
+  assert.equal(auto.status, 200);
+  assert.equal(auto.body.choice, "auto");
+  assert.ok(Array.isArray(auto.body.browsers));
   const tools = await s.call("GET", "/api/agent/tools");
   const names = tools.body.tools.map((t) => t.name);
   for (const n of ["site_sessions", "site_login", "site_logout"]) assert.ok(names.includes(n), n);

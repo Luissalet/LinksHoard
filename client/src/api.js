@@ -96,6 +96,7 @@ export const api = {
     finish: () => request("POST", "/api/sessions/finish", {}),
     cancel: () => request("POST", "/api/sessions/cancel", {}),
     logout: (site) => request("DELETE", `/api/sessions/${encodeURIComponent(site)}`),
+    setBrowser: (browser) => request("PUT", "/api/sessions/settings", { browser }),
   },
   tags: () => request("GET", "/api/tags"),
   sites: () => request("GET", "/api/sites"),

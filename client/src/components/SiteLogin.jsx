@@ -105,9 +105,20 @@ export function SessionsPanel({ notify }) {
       <p className="help mb-2 text-[12.5px]">
         Los vídeos públicos se descargan sin cuenta. Para contenido privado, con restricción de edad o cuando un sitio exige iniciar sesión,
         pulsa «Iniciar sesión»: se abre {data.browser ? data.browser.name : "el navegador"} en este ordenador con un perfil propio de Links,
-        inicias sesión como siempre y la sesión se guarda sola (la ventana se cierra al terminar). Tu navegador de siempre no se toca.
+        inicias sesión como siempre y la sesión se guarda sola (la ventana se cierra al terminar). Tu perfil de siempre no se toca.
       </p>
-      {!data.browser && <p className="mb-2 text-[12.5px]" style={{ color: "var(--danger-ink)" }}>No encontré Chrome, Edge, Brave ni Chromium en este equipo.</p>}
+      {data.browsers?.length > 0 && (
+        <label className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
+          <span>Navegador para iniciar sesión</span>
+          <select className="field field-sm w-auto" value={data.choice || "auto"} disabled={busy || running}
+            onChange={(e) => act(() => api.sessions.setBrowser(e.target.value), "Navegador guardado.")}>
+            <option value="auto">El predeterminado{data.default_browser ? ` (${data.default_browser.name}${data.default_browser.usable ? "" : ", no sirve: uso otro"})` : ""}</option>
+            {data.browsers.map((b) => <option key={b.name} value={b.name}>{b.name}{b.default ? " (predeterminado)" : ""}</option>)}
+          </select>
+          <span className="help text-[11.5px]">Cada navegador guarda sus propias sesiones: al cambiar, vuelve a iniciar sesión.</span>
+        </label>
+      )}
+      {!data.browser && <p className="mb-2 text-[12.5px]" style={{ color: "var(--danger-ink)" }}>No encontré Brave, Chrome, Edge, Vivaldi ni Chromium en este equipo.</p>}
       {active && <div className="mb-2 rounded-md border p-2" style={{ borderColor: "var(--field-line)" }}><span className="font-semibold text-[13px]">{active.label}</span>
         <WindowStatus active={active} busy={busy} onFinish={() => act(api.sessions.finish)} onCancel={() => act(api.sessions.cancel)} /></div>}
       <ul className="grid gap-1 sm:grid-cols-2">

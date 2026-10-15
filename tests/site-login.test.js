@@ -174,7 +174,9 @@ test("content that needs an account fails with the login button, and the saved s
   assert.equal(opened.body.active.site, "youtube");
   assert.equal(opened.body.active.state, "waiting");
   const first = launches().at(-1);
-  assert.ok(first.includes("--remote-debugging-port=0") && first.some((a) => a.startsWith("https://accounts.google.com/")) && !first.includes("--headless=new"));
+  assert.ok(first.includes("--remote-debugging-port=0") && !first.includes("--headless=new"));
+  const tabs = await until(() => { try { const p = JSON.parse(fs.readFileSync(path.join(profile(), "fake-pages.json"), "utf8")); return p.length === 1 && p[0].url.startsWith("https://accounts.google.com/") ? p : null; } catch { return null; } });
+  assert.equal(tabs.length, 1, "only the sign-in page is open");
   fs.writeFileSync(jar(), JSON.stringify([...YT_LOGIN, { name: "auth_token", value: "x-secret", domain: ".x.com", path: "/", expires: Date.now() / 1000 + 86400 }]));
   const saved = await until(async () => { const r = (await s.call("GET", "/api/sessions")).body; return r.active?.state === "saved" ? r : null; });
   assert.equal(saved.active.open, false, "the window closed itself");

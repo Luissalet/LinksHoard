@@ -478,11 +478,41 @@ async function openWindow(c) {
   const browser = findBrowser();
   if (!browser) throw noBrowser();
   c.launchedMs = Date.now();
-  c.handle = await launch(browser, ["--new-window", site.url]);
+  noSessionRestore(browser);
+  c.handle = await launch(browser, ["--new-window", "about:blank"]);
   c.handle.proc.on("exit", () => { onExit(c).catch(() => {}); });
+  const handle = c.handle;
+  await onlyTab(handle.ws, site.url).catch(() => {});
+  // closed or replaced while the tab was being opened (cancel, or a relaunch that took over): nothing more to follow here
+  if (c.closing || current !== c || c.handle !== handle || !alive(handle.proc)) return;
   setState("waiting", `Inicia sesión en ${site.label} en la ventana de ${browser.name} que se ha abierto en este equipo. Se guardará y se cerrará sola.`);
   stopTimer();
   c.timer = setInterval(() => { tick().catch(() => {}); }, POLL_MS());
+}
+
+/**
+ * One tab, the site's sign-in page, in front: a browser may restore the tabs of the last window or open its start page, so the page is
+ * opened through DevTools and every other tab is closed.
+ */
+async function onlyTab(ws, url) {
+  await sleep(600);
+  return withCdp(ws, async (c) => {
+    const before = ((await c.send("Target.getTargets")).targetInfos || []).filter((t) => t.type === "page");
+    const { targetId } = await c.send("Target.createTarget", { url });
+    for (const t of before) await c.send("Target.closeTarget", { targetId: t.targetId }).catch(() => {});
+    await c.send("Target.activateTarget", { targetId }).catch(() => {});
+  });
+}
+
+/** Links' profile starts on a new tab instead of restoring the last session (session.restore_on_startup = 5). */
+function noSessionRestore(browser) {
+  const file = path.join(profileDir(browser), "Default", "Preferences");
+  try {
+    const prefs = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (prefs?.session?.restore_on_startup === 5) return;
+    prefs.session = { ...(prefs.session || {}), restore_on_startup: 5 };
+    fs.writeFileSync(file, JSON.stringify(prefs));
+  } catch { /* a new profile has no preferences yet */ }
 }
 
 /** "Ya he terminado": reads the session now and closes the window. */
@@ -505,7 +535,7 @@ export async function finishLogin() {
 /** Closes the window without waiting (what it has is still read and kept). */
 export async function cancelLogin() {
   const c = current;
-  if (!c?.handle || !alive(c.handle.proc)) { current = null; changed(); return view(); }
+  if (!c?.handle || !alive(c.handle.proc)) { stopTimer(); if (c) c.closing = true; current = null; changed(); return view(); }
   stopTimer();
   c.closing = true;
   try { saveCookies(await readCookies(c.handle.ws)); } catch { /* closing anyway */ }

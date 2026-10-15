@@ -339,6 +339,12 @@ async function tick() {
 async function onExit(c) {
   stopTimer();
   if (current !== c || c.closing) return;
+  // a brand-new profile: the browser may finish setting it up and quit on its own a few seconds after the first start; open it again once
+  if (c.fresh && !c.relaunched && Date.now() - c.launchedMs < 20_000) {
+    c.relaunched = true;
+    await sleep(1000);
+    try { await openWindow(c); return; } catch (error) { setState("failed", error.message); return; }
+  }
   // the person closed the window: read what the profile kept, without a window
   setState("capturing", "Ventana cerrada; leyendo la sesión…");
   await sleep(1200);
@@ -368,16 +374,27 @@ export async function startLogin(id) {
   current = { site: site.id, browser: browser.name, handle: null, state: "opening", detail: `Abriendo ${browser.name}…`, started_at: now(), startedMs: Date.now(), seenAt: 0, timer: null };
   const c = current;
   changed();
+  c.fresh = !fs.existsSync(path.join(profileDir(), "Local State"));
   try {
-    c.handle = await launch(browser, ["--new-window", site.url]);
+    await openWindow(c);
   } catch (error) {
     setState("failed", error.message);
     throw error;
   }
+  return view();
+}
+
+/** Starts the window for c's site, follows its exit and polls its cookies. */
+async function openWindow(c) {
+  const site = siteById(c.site);
+  const browser = findBrowser();
+  if (!browser) throw noBrowser();
+  c.launchedMs = Date.now();
+  c.handle = await launch(browser, ["--new-window", site.url]);
   c.handle.proc.on("exit", () => { onExit(c).catch(() => {}); });
   setState("waiting", `Inicia sesión en ${site.label} en la ventana de ${browser.name} que se ha abierto en este equipo. Se guardará y se cerrará sola.`);
+  stopTimer();
   c.timer = setInterval(() => { tick().catch(() => {}); }, POLL_MS());
-  return view();
 }
 
 /** "Ya he terminado": reads the session now and closes the window. */

@@ -1,6 +1,7 @@
 // REST routes for media downloads, installed behind the same guard as the
 // rest of /api. Errors bubble to the shared handler in app.js as { error }.
 import * as media from "./media.js";
+import * as sessions from "./site-login.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe esa descarga." });
 const truthy = (v) => v === "1" || v === "true" || v === true;
@@ -25,6 +26,23 @@ export function installMediaRoutes(app) {
   });
   app.put("/api/media/settings", (req, res, next) => {
     try { res.json(media.setMediaSettings(req.body || {})); } catch (e) { next(e); }
+  });
+
+  // "Iniciar sesión con…": the sites' sessions for downloads that need an account (site-login.js). Cookie values never leave the server.
+  app.get("/api/sessions", (req, res, next) => {
+    try { res.json(sessions.list()); } catch (e) { next(e); }
+  });
+  app.post("/api/sessions/finish", async (req, res, next) => {
+    try { await sessions.finishLogin(); res.json(sessions.list()); } catch (e) { next(e); }
+  });
+  app.post("/api/sessions/cancel", async (req, res, next) => {
+    try { await sessions.cancelLogin(); res.json(sessions.list()); } catch (e) { next(e); }
+  });
+  app.post("/api/sessions/:site/login", async (req, res, next) => {
+    try { await sessions.startLogin(req.params.site); res.status(202).json(sessions.list()); } catch (e) { next(e); }
+  });
+  app.delete("/api/sessions/:site", async (req, res, next) => {
+    try { res.json(await sessions.logout(req.params.site)); } catch (e) { next(e); }
   });
 
   app.post("/api/media/probe", async (req, res, next) => {

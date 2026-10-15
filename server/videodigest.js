@@ -154,6 +154,9 @@ export function digestView(linkId, { level = null, from = null, to = null, maxCh
     ...base, status: row.status, stage: row.stage || undefined, detail: row.detail || undefined, error: row.error || undefined, focus: row.focus || undefined,
     dir: fs.existsSync(dir) ? dir : undefined, files, stats, created_at: row.created_at, updated_at: row.updated_at, finished_at: row.finished_at,
   };
+  // a download that needed an account: the "Iniciar sesión con…" button of that site
+  const login = row.status === "failed" ? media.loginNeeded(link.url_original || link.url, row.error) : null;
+  if (login) out.login = login;
   if (level && ["done", "partial"].includes(row.status)) {
     const text = readLayer(linkId, level, { from, to });
     if (text !== null) {
@@ -797,12 +800,13 @@ export function initVideoDigest() {
 }
 
 export function listDigests({ limit = 30 } = {}) {
-  return db().prepare(`SELECT d.link_id, d.status, d.stage, d.detail, d.focus, d.stats, d.updated_at, d.finished_at, l.title, l.url FROM link_digest d
+  return db().prepare(`SELECT d.link_id, d.status, d.stage, d.detail, d.error, d.focus, d.stats, d.updated_at, d.finished_at, l.title, l.url, l.url_original FROM link_digest d
     JOIN links l ON l.id = d.link_id ORDER BY d.updated_at DESC LIMIT ?`).all(Math.max(1, Math.min(200, Number(limit) || 30))).map((r) => {
     let stats = {};
     try { stats = JSON.parse(r.stats || "{}"); } catch { stats = {}; }
     return { link_id: r.link_id, title: stats.title || r.title, url: r.url, status: r.status, stage: r.stage || undefined, detail: r.detail || undefined, focus: r.focus || undefined,
-      duration_s: stats.duration_s, tokens: stats.tokens?.brief, updated_at: r.updated_at, finished_at: r.finished_at };
+      duration_s: stats.duration_s, tokens: stats.tokens?.brief, updated_at: r.updated_at, finished_at: r.finished_at,
+      ...(r.status === "failed" ? { error: r.error || undefined, login: media.loginNeeded(r.url_original || r.url, r.error) || undefined } : {}) };
   });
 }
 

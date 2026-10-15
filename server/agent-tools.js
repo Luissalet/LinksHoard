@@ -9,6 +9,7 @@ import { enqueueFetch, waitForFetch } from "./fetcher.js";
 import { importTranscript } from "./transcript.js";
 import * as watches from "./watches.js";
 import * as media from "./media.js";
+import * as sessions from "./site-login.js";
 import * as video from "./videoinsight.js";
 import * as digest from "./videodigest.js";
 import { highlightsToCards, DEFAULT_DECK } from "./cards.js";
@@ -31,7 +32,7 @@ highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "L
 reading_plan selects complete unread saved texts for the user's available minutes and assumed reading speed. Report estimates, not guaranteed duration. It never fetches pages, marks links read or changes the daily resurfacing list; use read_link before summarizing any selected text.
 Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
 A finished download also lists its files in deliverables: an assistant that can hand files to the user (Faustus turns them into download links that work on the desktop and on the phone) should give the user those links; the file stays in the downloads folder and the link in the library either way.
-When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed.
+When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed. A public YouTube video downloads without an account (the app retries with alternative YouTube players when YouTube asks for a sign-in). When a download fails because the site wants an account, the result carries login: { site, label }: offer site_login, which opens a browser window on the computer where Links runs so the user signs in there (never ask for or type the password yourself); once site_sessions shows that site signed in, call media_retry. site_logout forgets a site's session.
 For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
 To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).`;
 
@@ -100,6 +101,7 @@ function agentView(row, { started = false, existing, detail = false } = {}) {
     link_id: row.link_id || undefined,
     ...(active ? { progress: row.progress, speed: row.speed || undefined, eta: row.eta || undefined, detail: row.detail || undefined } : {}),
     ...(row.status === "failed" || row.status === "cancelled" ? { error: row.error } : {}),
+    ...(row.status === "failed" && row.login ? { login: row.login } : {}),
     ...(row.status === "done" && row.detail ? { note: row.detail } : {}),
     // the files the user asked for: an assistant that can hand files over (Faustus) turns these into download links
     ...(row.status === "done" && files.length ? { deliverables: files.filter((f) => f.path).map((f) => ({ path: f.path, name: f.name || undefined })) } : {}),
@@ -481,6 +483,30 @@ export const TOOLS = [
       const status = await media.toolsStatus({ refresh: !!a.update });
       return { ...status, settings: media.getMediaSettings(), ...(update ? { update: update.results } : {}) };
     }),
+
+  tool("site_sessions",
+    "Which sites Links is signed in to for downloads — sesiones guardadas, iniciar sesión en YouTube/X/Instagram\nLists the sites with a login button (YouTube, X, Instagram, Threads, TikTok, Facebook, Reddit, Twitch, Vimeo, Pinterest, SoundCloud, Bilibili, Patreon): whether Links holds a signed-in session for each, since when, the browser it uses and the login window if one is open (state: opening, waiting, signing, saved, capturing, closed, expired, failed). No cookie values are returned.\nSinónimos: con qué cuentas está conectado Links, sesiones de descarga, estoy logueado en YouTube, cookies de descargas",
+    z.object({}), RO,
+    () => sessions.list()),
+
+  tool("site_login",
+    "Open a sign-in window so downloads can use the account — iniciar sesión con YouTube, X, Instagram…\nOpens a window of the installed Chrome/Edge/Brave on the computer where Links runs, on that site's login page, with a browser profile of Links' own. The user signs in there themselves; Links saves the session on its own and closes the window (or call with finish: true once they say they are done). Use it after a download failed with login, then media_retry. Never ask the user for their password and never type it.\nSinónimos: inicia sesión en youtube para descargar, conéctate a mi cuenta de instagram, loguéate en X, usar mi cuenta para descargar",
+    z.object({
+      site: z.string().trim().min(1).max(40).describe("Site id: youtube, x, instagram, threads, tiktok, facebook, reddit, twitch, vimeo, pinterest, soundcloud, bilibili, patreon"),
+      finish: z.boolean().default(false).describe("The user says they finished: read the session now and close the window"),
+      cancel: z.boolean().default(false).describe("Close the window without waiting"),
+    }), { openWorldHint: true },
+    async (a) => {
+      if (a.cancel) { await sessions.cancelLogin(); return sessions.list(); }
+      if (a.finish) { await sessions.finishLogin(); return sessions.list(); }
+      await sessions.startLogin(a.site);
+      return { ...sessions.list(), message: "Ventana abierta en el ordenador donde corre Links: el usuario inicia sesión allí y Links la guarda solo. Consulta site_sessions para ver cuándo queda guardada." };
+    }),
+
+  tool("site_logout",
+    "Forget Links' session on a site — cerrar sesión de YouTube/X/Instagram en Links\nDeletes that site's cookies from Links' browser profile and from the cookies file downloads use. The user's own browser is not touched.\nSinónimos: cierra la sesión de youtube en links, olvida mi cuenta de instagram, quita la sesión",
+    z.object({ site: z.string().trim().min(1).max(40) }), { destructiveHint: true, idempotentHint: true },
+    (a) => sessions.logout(a.site)),
 
   tool("media_delete",
     "Remove a download record, optionally its files — borrar descarga, quitar archivo descargado\nRemoves the record from the downloads list. With delete_files: true AND confirm: true it also deletes the downloaded files from the disk (permanent, there is no recycle bin): confirm with the user first. A running download must be cancelled first.\nSinónimos: borra la descarga, elimina el archivo descargado, quita de la lista de descargas, borrar el vídeo descargado",

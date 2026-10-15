@@ -5,6 +5,7 @@ import { Page, Section, Field, useAction } from "../components/ui.jsx";
 import { changedFields, refreshDraft } from "../hoard-copilot.js";
 import { useCopilotRefresh } from "../useCopilotRefresh.js";
 import DigestSettings from "../components/DigestSettings.jsx";
+import { SessionsPanel } from "../components/SiteLogin.jsx";
 
 function bookmarkletHref(origin) {
   const code = `javascript:(function(){location.href=${JSON.stringify(origin)}+'/share?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title);})();`;
@@ -111,7 +112,7 @@ export default function Ajustes() {
           <Field label="Carpeta de descargas" help={media ? `Vacío = la carpeta por defecto (${media.default_dir}). Ruta absoluta; se crea si no existe.` : "Ruta absoluta; se crea si no existe."}>
             <input className="field" value={mediaDir} onChange={(e) => setMediaDir(e.target.value)} placeholder={media?.default_dir || "C:\\Users\\tu-usuario\\Downloads\\Links Hoard"} />
           </Field>
-          <Field label="Archivo de cookies (opcional)" help="Para contenido privado de Instagram o X. Si lo dejas vacío se prueba sin cookies y después con las de Firefox, Chrome, Edge, Brave…">
+          <Field label="Archivo de cookies (opcional, avanzado)" help="Normalmente no hace falta: usa «Iniciar sesión con…» aquí abajo. Si indicas un cookies.txt propio, se usa siempre ese en lugar de las sesiones de Links y de las cookies de los navegadores.">
             <input className="field" value={cookiesFile} onChange={(e) => setCookiesFile(e.target.value)} placeholder="C:\\Users\\tu-usuario\\cookies.txt" />
           </Field>
           <label className="flex items-center gap-2 text-[13px]">
@@ -123,6 +124,10 @@ export default function Ajustes() {
           )}
           <div><button type="submit" className="btn btn-primary" disabled={busy}>Guardar</button></div>
         </form>
+      </Section>
+
+      <Section title="Sesiones para descargar" className="mt-4">
+        <SessionsPanel notify={notify} />
       </Section>
 
       <Section title="Para leer hoy" className="mt-4">

@@ -90,6 +90,13 @@ export const api = {
     saveSettings: (data) => request("PUT", "/api/media/settings", data),
     fileUrl: (id, i = 0) => `/api/media/${id}/file?i=${i}`,
   },
+  sessions: {
+    list: () => request("GET", "/api/sessions"),
+    login: (site) => request("POST", `/api/sessions/${encodeURIComponent(site)}/login`, {}),
+    finish: () => request("POST", "/api/sessions/finish", {}),
+    cancel: () => request("POST", "/api/sessions/cancel", {}),
+    logout: (site) => request("DELETE", `/api/sessions/${encodeURIComponent(site)}`),
+  },
   tags: () => request("GET", "/api/tags"),
   sites: () => request("GET", "/api/sites"),
   import: (data) => request("POST", "/api/import", data),

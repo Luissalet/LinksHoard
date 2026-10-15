@@ -598,9 +598,11 @@ async function withCookieAttempts(request, fn, url = "") {
     const login = first.authLike ? loginFor(url) : null;
     if (login) {
       const hadSession = attempts.some((a) => a.session);
+      // the shared advice ("sign in to Firefox or Chrome…") gives way to the button that does it
+      first.message = first.message.replace(/ ?Inicia sesión en Firefox o Chrome y vuelve a intentarlo, o indica un archivo de cookies en Ajustes\./, "");
       first.message += hadSession
         ? ` La sesión de ${login.label} guardada en Links ya no vale: pulsa «Iniciar sesión con ${login.label}» otra vez.`
-        : ` Pulsa «Iniciar sesión con ${login.label}» (en la descarga o en Ajustes → Descargas) y vuelve a intentarlo.`;
+        : ` Pulsa «Iniciar sesión con ${login.label}» (en la descarga o en Ajustes → Sesiones para descargar) y vuelve a intentarlo.`;
       first.details = { ...(first.details || {}), login };
       first.hint = first.hint || `Iniciar sesión con ${login.label}: Links abre una ventana del navegador en este equipo y guarda la sesión.`;
     }

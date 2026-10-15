@@ -24,14 +24,22 @@ function frame(text) {
   return Buffer.concat([head, payload]);
 }
 
+// the open tabs: what the browser was started with (its last argument), recorded in <user-data-dir>/fake-pages.json
+const pages = [{ id: "t0", url: args.filter((a) => !a.startsWith("--")).pop() || "about:blank" }];
+const writePages = () => fs.writeFileSync(path.join(profile, "fake-pages.json"), JSON.stringify(pages));
+writePages();
+
 function handle(message, socket) {
   const { id, method, params = {} } = JSON.parse(message);
   let result = {};
   if (method === "Storage.getCookies") result = { cookies: readJar() };
-  else if (method === "Target.createTarget") result = { targetId: "t1" };
+  else if (method === "Target.getTargets") result = { targetInfos: pages.map((p) => ({ targetId: p.id, type: "page", url: p.url })) };
+  else if (method === "Target.createTarget") { const id = `t${pages.length + 1}`; pages.push({ id, url: params.url }); result = { targetId: id }; }
+  else if (method === "Target.closeTarget") { const i = pages.findIndex((p) => p.id === params.targetId); if (i >= 0) pages.splice(i, 1); writePages(); }
   else if (method === "Target.attachToTarget") result = { sessionId: "s1" };
   else if (method === "Network.deleteCookies") writeJar(readJar().filter((c) => !(c.name === params.name && c.domain === params.domain)));
   else if (method === "Browser.close") { socket.write(frame(JSON.stringify({ id, result: {} }))); setTimeout(() => process.exit(0), 50); return; }
+  if (method === "Target.createTarget") writePages();
   socket.write(frame(JSON.stringify({ id, result })));
 }
 

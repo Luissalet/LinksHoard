@@ -1,3 +1,7 @@
+> **Absorbed by [Borges's Hoard](https://github.com/Luissalet/BorgesHoard).** All native functions, interface and data are preserved in the incorporated module. This Hub identity retains compatibility, tokens and references; it cannot launch a standalone server. Start Borges explicitly and enable only requested functions: modules and background automation initially stay OFF. Keep the original data directories.
+>
+> The documentation below describes the historical engine; use the linked repository for current installation and operation.
+
 # Links Hoard
 
 Local-first read-later bookmark library: save a URL, get the extracted article text, tag it, highlight passages and search everything — stored in a single SQLite file on your own computer and exposed to an assistant through MCP.

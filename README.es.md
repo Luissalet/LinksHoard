@@ -1,3 +1,7 @@
+> **Absorbido por [Borges's Hoard](https://github.com/Luissalet/BorgesHoard).** Sus funciones, interfaz y datos se conservan en el módulo incorporado. Esta entrada del Hub mantiene compatibilidad, tokens y referencias; ya no lanza un servidor propio. Inicia Borges y activa sólo las funciones que quieras: módulos y automatismos empiezan desactivados. Conserva las carpetas de datos originales.
+>
+> La documentación siguiente describe el motor histórico; el repositorio enlazado contiene la instalación y el uso actuales.
+
 # Links Hoard
 
 Bandeja de lectura local: guarda una URL, obtén el texto del artículo extraído, etiquétalo, subraya pasajes y busca en todo — todo en un único archivo SQLite en vuestro ordenador, expuesto a un asistente mediante MCP.

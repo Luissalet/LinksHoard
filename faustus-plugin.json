@@ -1,9 +1,25 @@
 {
   "schema": 1,
-  "x-family": { "copilot": { "version": 1, "info": "/api/copilot/info", "panel": "/api/copilot/panel.js", "proxy": "/api/copilot/proxy", "launcher": "/api/copilot/launcher.js", "context": "window.hoardCopilot.context", "refresh": "window.hoardCopilot.onTurnEnd" } },
+  "x-family": {
+    "copilot": {
+      "version": 1,
+      "info": "/api/copilot/info",
+      "panel": "/api/copilot/panel.js",
+      "proxy": "/api/copilot/proxy",
+      "launcher": "/api/copilot/launcher.js",
+      "context": "window.hoardCopilot.context",
+      "refresh": "window.hoardCopilot.onTurnEnd"
+    },
+    "absorbed_by": {
+      "id": "borges",
+      "repository": "https://github.com/Luissalet/BorgesHoard",
+      "module": "links",
+      "standalone": false
+    }
+  },
   "id": "links",
-  "name": "Links Hoard",
-  "purpose": "Read-later bookmark library with extracted article text, tags and highlights, stored locally; also downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk.",
+  "name": "Links Hoard · Borges",
+  "purpose": "Absorbed by Borges's Hoard. Native compatibility identity only; no standalone server. Read-later bookmark library with extracted article text, tags and highlights, stored locally; also downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk.",
   "capabilities": [
     "bookmarks",
     "read-later",
@@ -33,16 +49,17 @@
     "TOKEN_FILE"
   ],
   "defaults": {
-    "APP_URL": "http://127.0.0.1:5181",
-    "TOKEN_FILE": "{LINKS_DIR}/data/mcp-token"
+    "APP_URL": "http://127.0.0.1:5184/links",
+    "TOKEN_FILE": "{LINKS_DIR}/data/mcp-token",
+    "BORGES_DIR": "{LINKS_DIR}/../Borges's Hoard"
   },
   "app": {
-    "url_default": "http://127.0.0.1:5181",
-    "ui_url": "{APP_URL}",
+    "url_default": "http://127.0.0.1:5184/links",
+    "ui_url": "http://127.0.0.1:5184/",
     "health": {
       "path": "/api/health",
       "expect": {
-        "service": "links-hoard"
+        "service": "absorbed-links"
       }
     },
     "identify": {
@@ -52,31 +69,21 @@
       "title": [
         "links hoard"
       ]
-    },
-    "launch_hint": {
-      "kind": "process",
-      "executable": "node",
-      "argv": [
-        "server/index.js"
-      ],
-      "cwd": "{LINKS_DIR}",
-      "readiness": {
-        "url": "{APP_URL}/api/health",
-        "timeout_s": 20
-      }
     }
   },
   "mcp": {
     "transport": "stdio",
-    "command": "node",
+    "command": "{BORGES_DIR}/venv/Scripts/python.exe",
     "args": [
-      "{LINKS_DIR}/server/mcp.js"
+      "{BORGES_DIR}/mcp_server.py"
     ],
     "env": {
-      "LINKS_URL": "{APP_URL}",
-      "LINKS_TOKEN_FILE": "{TOKEN_FILE}"
+      "BORGES_URL": "http://127.0.0.1:5184",
+      "BORGES_TOKEN_FILE": "{BORGES_DIR}/data/mcp-token"
     },
-    "optional_env": []
+    "optional_env": [
+      "BORGES_DATA_DIR"
+    ]
   },
-  "notes": "Keep the app running (npm start) while the assistant uses it: the MCP bridge proxies every call to the local server and never opens the database itself. save_link waits briefly for the background fetch to report a real title and excerpt."
+  "notes": "Absorbed by Borges's Hoard: https://github.com/Luissalet/BorgesHoard. This identity preserves native tokens and references; it cannot start or stop the merged process. Start Borges explicitly and enable its module there."
 }

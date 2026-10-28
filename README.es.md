@@ -1,11 +1,7 @@
-> **Absorbido por [Writer's Hoard](https://github.com/Luissalet/Writers-Hoard-Desktop).**
-> Las funciones de este proyecto se mantienen en el Hoard fusionado, con módulos independientes y apagados inicialmente.
-> El código y las instrucciones siguientes se conservan como referencia histórica; usa el repositorio enlazado para la instalación actual.
-> La absorción anterior en Borges continúa ahora dentro de Writer.
-
-> **Absorbido por [Borges's Hoard](https://github.com/Luissalet/BorgesHoard).** Sus funciones, interfaz y datos se conservan en el módulo incorporado. Esta entrada del Hub mantiene compatibilidad, tokens y referencias; ya no lanza un servidor propio. Inicia Borges y activa sólo las funciones que quieras: módulos y automatismos empiezan desactivados. Conserva las carpetas de datos originales.
->
-> La documentación siguiente describe el motor histórico; el repositorio enlazado contiene la instalación y el uso actuales.
+> **Links Hoard vuelve a ser un Hoard propio** (decisión del 28-10-2026). Estuvo absorbido en Writer's Hoard; ahora corre con su propio
+> servidor y puerto (5181), con el id de app `links`, su carpeta de datos y su puente MCP, y Writer lo llama como módulo externo para
+> guardar referencias. Conserva todo lo que hacía la copia absorbida (las mismas 46 herramientas MCP, con los mismos nombres) y suma
+> **Sentidos**, el motor de escucha. Se arranca desde el Hoard Hub o con `npm start`.
 
 # Links Hoard
 
@@ -67,6 +63,7 @@ El servidor escucha únicamente en `127.0.0.1`. Si el puerto 5181 está ocupado 
 | `LINKS_MEDIA_SIBLING_DIR` | Una carpeta más donde buscar los programas, después de `<HOARD_HOME>/bin` y antes del `PATH` (por defecto `../Writers hoard desktop/resources/bin`); `off` la desactiva. |
 | `LINKS_MEDIA_AUTO_UPDATE` / `LINKS_MEDIA_STALE_DAYS` | `0` desactiva la actualización automática de yt-dlp (igual que el interruptor de Ajustes); antigüedad en días a partir de la cual yt-dlp se actualiza antes de descargar (por defecto 45). |
 | `PYTHON` | Intérprete de Python para `python -m yt_dlp` y `pip install -U` (por defecto `python3`, `python` o `py -3`). |
+| `LINKS_SENTIDOS_VENV` / `LINKS_SENTIDOS_HOME` / `LINKS_SENTIDOS_BASE_PYTHON` / `LINKS_SENTIDOS_IDLE_MIN` | Sentidos (el motor de escucha): su entorno de Python (por defecto `<repo>/.venv-sentidos`), su carpeta de modelos (por defecto `<datos>/sentidos`), el Python con el que se crea el entorno y los minutos sin uso antes de parar el motor (por defecto 20, 0 = nunca). Ver [docs/SENTIDOS.md](docs/SENTIDOS.md). |
 | `LINKS_COOKIES_FILE` | Archivo de cookies en formato Netscape para publicaciones privadas (el ajuste de Ajustes tiene prioridad). |
 | `LINKS_COOKIES_BROWSERS` | Navegadores a probar para las cookies, separados por comas y en orden (por defecto `firefox,chrome,edge,brave,chromium,vivaldi,opera`). |
 | `LINKS_LOGIN_BROWSER` | Navegador para la ventana de inicio de sesión (por defecto, el predeterminado del sistema si es Chromium; si no, el primero que encuentre de Chrome, Edge, Brave, Vivaldi, Chromium; en Ajustes se puede elegir). |
@@ -136,6 +133,10 @@ Rutas REST (con la misma protección local que el resto de `/api`):
 ## Digest de vídeo (ver un vídeo por un asistente)
 
 Pega un enlace (un tweet con vídeo, YouTube, un reel) en la página **Vídeos**, o que un asistente llame a `video_digest`: la app lo descarga, lo transcribe, recorre la imagen entera, lee el texto en pantalla con OCR y escribe capítulos y resumen con los modelos locales del Hub, y deja un dossier por capas en `<datos>/video/<id del enlace>/digest/`: `card.md` (fuente, texto de la publicación, resumen, puntos clave, respuesta a tu foco y lo que cuesta cada capa), `index.md` (capítulos con lo que se dice y se ve), `visual.md` (cada plano con su texto en pantalla literal), `transcript.md`, `digest.md`, un mosaico 4×4 con tiempos y un fotograma por plano distinto. Un asistente lee la ficha y el índice por unos pocos miles de tokens en vez de cientos de miles en fotogramas, y luego pregunta (`video_ask`, con citas literales comprobadas y minuto), busca (`video_find`) o saca el fotograma exacto de un instante (`video_frame`). Lo literal y lo generado van siempre marcados aparte. Desde una consola: `node scripts/digest.mjs <url> --focus "…"`. Detalle, ajustes y límites: [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
+
+## Sentidos (el oído de la app)
+
+La página **Sentidos** y las herramientas MCP `audio_*` escuchan un sonido en este equipo con dos modelos locales (CLAP y AudioSet, solo CPU, unos 1,1 GB que se descargan una vez, en un motor residente que arranca cuando hace falta y se para si no se usa): `audio_describe` (a qué suena, con z calibrada y veredicto por etiqueta), `audio_match` (¿suena a lo que describes?), `audio_find` (en qué momento de un archivo suena algo; sin archivo busca en las bandas sonoras de los digests de vídeo, y con `deep` en los archivos descargados), `audio_timeline` (música, efectos y ambiente por secciones, volumen, caídas y pulso), `audio_measure` (volumen, picos y ruido, sin modelos), `audio_realness` (grabado o sintético, calibración débil), `audio_sheet` (un PNG con espectrograma, onda y eventos) y `audio_status` (instalar, arrancar, parar). La fuente es la ruta `path` de un archivo, el `id` de un enlace guardado o una `url`. Un digest de vídeo suma una capa **«qué suena»** (`sound.md`, nivel `sound` de `video_digest_read`, se busca con `video_find` y `video_ask` puede citarla) cuando el motor está listo. Se prepara desde la propia página (**Preparar Sentidos**: entorno de Python propio, paquetes y modelos, en segundo plano). El motor es una bifurcación separada de earshot 0.4.0 (MIT). Detalle, límites y cómo leer un veredicto: [docs/SENTIDOS.md](docs/SENTIDOS.md).
 
 ## Normalización de URL (la clave de deduplicación)
 
@@ -216,5 +217,9 @@ npm run build
 ```
 
 Las pruebas usan directorios de datos temporales y un servidor HTTP local para las páginas de ejemplo: nada toca tus datos reales ni la red. Un hub falso (`tests/fake-hub.js`) hace de hub de la familia: anota los eventos y responde al `cards_add` por el proxy. Las descargas se prueban con scripts pequeños que imitan yt-dlp, gallery-dl y ffmpeg (`tests/media-fakes.js`, elegidos con `LINKS_YTDLP=node:<script>`), así que no hace falta ningún sitio real ni ningún programa. Cubren normalización de URL (y la reasignación única de una biblioteca antigua), el descargador de páginas compartido (codificaciones, PDF e imágenes, páginas de desafío, el tope de bytes, la comprobación de direcciones), las vigilancias (ETag, páginas bloqueadas, el camino por el hub, una referencia silenciosa tras actualizar), el servicio de medios de la familia (secciones, límites, `media_info`, `media_subtitles`, `media_audio_for_asr`, direcciones privadas), el punto de entrada real (reiniciar conserva el token, SIGTERM sale con 0), extracción con Readability sobre una página de ejemplo, idempotencia al guardar, búsqueda de texto completo, el resumen, subrayados, análisis de importación de marcadores/listas de URL, autenticación del token del asistente, un recorrido completo de la API, para la familia (subrayados a tarjetas: una vez cada uno, `source_ref`, Hypatia antigua, hub caído, lotes de 50; el evento `links.highlight.added`; las elecciones de «Para leer hoy» con su clasificación, enfriamiento y una lista por día, y su resumen diario; los eventos de trabajo canónicos) y, para las descargas: detección de plataforma, argumentos por formato y calidad, lectura del progreso, la cola (orden, cancelación de una descarga en espera y de la que corre con su árbol de procesos), el relevo a gallery-dl, las cookies de los navegadores, los reproductores alternativos ante la comprobación de bot, la ventana de inicio de sesión con un navegador falso (`tests/fake-browser.js`: guardar, cerrarla a mano, la primera ventana de un perfil nuevo que se cierra sola, cerrar sesión), el enlace guardado con su nota, que nunca se sobrescribe nada, el envío de archivos con Range, las rutas REST y las herramientas MCP.
+
+Sentidos se prueba con su motor de Python sustituido por una función (`setSentidosRunner`): las fuentes, las ocho herramientas, la capa de sonido de un digest (construida, buscada, consultada y conservada si el motor falla), las rutas y los errores de instalación. El motor real se comprueba a mano con archivos de audio (ver [docs/SENTIDOS.md](docs/SENTIDOS.md)).
+
+Los objetivos pendientes y los fallos conocidos están en [docs/OBJETIVOS.md](docs/OBJETIVOS.md) y [docs/REVISAR.md](docs/REVISAR.md).
 
 Diseño y decisiones: [`DESIGN.md`](DESIGN.md).

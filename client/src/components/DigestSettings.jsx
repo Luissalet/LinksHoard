@@ -12,7 +12,7 @@ export default function DigestSettings({ run, busy }) {
     e.preventDefault();
     const out = await run(() => api.videoDigest.saveSettings({
       export_dir: s.export_dir.trim(), download_height: Number(s.download_height), ocr: !!s.ocr, ocr_lang: s.ocr_lang,
-      vision: !!s.vision, vision_max: Number(s.vision_max), llm: !!s.llm, summary_lang: s.summary_lang,
+      vision: !!s.vision, vision_max: Number(s.vision_max), sound: !!s.sound, llm: !!s.llm, summary_lang: s.summary_lang,
     }), "Ajustes del digest guardados.");
     if (out) setS(out);
   };
@@ -39,6 +39,7 @@ export default function DigestSettings({ run, busy }) {
         </div>
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!s.ocr} onChange={(e) => set("ocr", e.target.checked)} /> Leer el texto en pantalla (OCR de Kafka's Hoard o Tesseract)</label>
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!s.vision} onChange={(e) => set("vision", e.target.checked)} /> Describir los planos con un modelo de visión (si el Hub sirve uno)</label>
+        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!s.sound} onChange={(e) => set("sound", e.target.checked)} /> Escuchar la banda sonora: música, efectos y ambiente (Sentidos, si está preparado)</label>
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!s.llm} onChange={(e) => set("llm", e.target.checked)} /> Capítulos y resumen con el modelo de texto del Hub</label>
         <div><button type="submit" className="btn btn-primary" disabled={busy}>Guardar</button></div>
       </form>

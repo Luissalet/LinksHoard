@@ -10,6 +10,7 @@ import Ajustes from "./pages/Ajustes.jsx";
 import Vigia from "./pages/Vigia.jsx";
 import Descargas from "./pages/Descargas.jsx";
 import Videos from "./pages/Videos.jsx";
+import Sentidos from "./pages/Sentidos.jsx";
 import { linksContext, viewFields, COPILOT_CONTEXT, COPILOT_REFRESH } from "./hoard-copilot.js";
 
 const PAGES = [
@@ -20,6 +21,7 @@ const PAGES = [
   { path: "vigia", label: "Vigía", icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM12 9a3 3 0 100 6 3 3 0 000-6z", component: Vigia },
   { path: "descargas", label: "Descargas", icon: "M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14", component: Descargas },
   { path: "videos", label: "Vídeos", icon: "M4 6h12v12H4zM16 10l4-2v8l-4-2", component: Videos },
+  { path: "sentidos", label: "Sentidos", icon: "M4 12h2l2-6 3 12 3-9 2 3h4", component: Sentidos },
   { path: "ajustes", label: "Ajustes", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h2m12 0h2M12 4v2m0 12v2", component: Ajustes },
 ];
 

@@ -5,3 +5,6 @@ data/
 .env.*
 !.env.example
 *.log
+.venv-sentidos/
+__pycache__/
+*.pyc

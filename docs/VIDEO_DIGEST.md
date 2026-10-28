@@ -13,6 +13,7 @@ For a link (a post on X with a video, YouTube, a reel, any yt-dlp site, or a loc
 | `card.md` | Source, author, date, duration, the post text (literal), the summary, key points and the answer to your focus (generated), warnings, and what each other layer costs | 300–900 tokens |
 | `index.md` | One block per chapter: time span, title and summary (generated), what is on screen (OCR excerpt, description) and which frame shows it | ~150–250 tokens per chapter |
 | `visual.md` | Every visual segment of the whole video: span, kind, description (generated), the **literal screen text** (OCR), the frame file; a slide shown again is marked as a repeat | depends on the screen text |
+| `sound.md` | What the soundtrack sounds like (music, effects, ambience), stretch by stretch, from Sentidos; generated, only when its engine is ready | ~100 tokens per stretch |
 | `transcript.md` | The literal transcript in timed paragraphs | ~200 tokens per spoken minute |
 | `digest.md` | All of the above | |
 | `overview.jpg`, `sheet-NN.jpg` | A 4×4 mosaic of frames with `v12 3:45` printed on each (all segments in order in the numbered sheets) | ~1,500 tokens each |
@@ -37,7 +38,8 @@ A digest is idempotent: asking again for the same video and focus returns it as 
 - `video_ask` / `POST /api/links/:id/digest/ask {question}`: the local model answers from the transcript and screen text; every sentence carries citations (`s12` speech, `v3` screen) with the time and a verbatim quote that the app checks; sentences whose quote is not in the source are dropped and counted.
 - `video_find` / `GET /api/video-digests/search?q=&id=`: words in the transcripts and the screen text, with time and the lines around.
 - `video_frame` / `GET /api/links/:id/digest/frame?t=3:45&width=1024` (`&json=1` for the path): the exact frame at any instant, with what it costs to look at it.
-- `video_digest_read` / `GET /api/links/:id/digest?level=transcript&from=3:00&to=5:00`: one layer or one span.
+- `video_digest_read` / `GET /api/links/:id/digest?level=transcript&from=3:00&to=5:00`: one layer (`brief`, `card`, `index`, `visual`, `sound`, `transcript`, `full`) or one span.
+- The **sound layer** (`sound.md`, level `sound`): `audio_timeline` of the video's soundtrack by Sentidos (first 30 minutes, `sound_max_s`), with the card line *Suena*, a line per chapter in the index, the sections in the search (`video_find`, `where: sound`) and as citable passages of `video_ask` (`a1`, `a2`…). Without Sentidos the digest still finishes (never partial for this), says so in its warnings and adds the layer the next time it is asked for with the engine ready. See [SENTIDOS.md](SENTIDOS.md).
 
 ## Interfaces
 
@@ -48,7 +50,7 @@ A digest is idempotent: asking again for the same video and focus returns it as 
 
 ## Settings
 
-`download_height` (720), `max_duration_s` (4 h), `fps` (0 = by duration), `diff_threshold` (0.075), `min_segment_s` (2), `max_visual` (120), `frame_width` (1280), `ocr` / `ocr_lang` (es), `vision` / `vision_max` (40), `llm`, `summary_lang` (es), `export_dir` (also `LINKS_DIGEST_EXPORT_DIR`).
+`download_height` (720), `max_duration_s` (4 h), `fps` (0 = by duration), `diff_threshold` (0.075), `min_segment_s` (2), `max_visual` (120), `frame_width` (1280), `ocr` / `ocr_lang` (es), `vision` / `vision_max` (40), `sound` (true) / `sound_max_s` (1800), `llm`, `summary_lang` (es), `export_dir` (also `LINKS_DIGEST_EXPORT_DIR`).
 
 ## Limits
 

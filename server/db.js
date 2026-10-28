@@ -236,6 +236,18 @@ const MIGRATIONS = [
     ocr TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (link_id, idx)
   );
+  `,
+  // 10: Sentidos (see sentidos.js): what a video sounds like, one row per stretch of the soundtrack (music, effects, ambience), searchable
+  `
+  CREATE TABLE link_sounds (
+    link_id TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (link_id, idx)
+  );
   `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall
@@ -249,6 +261,7 @@ function tryCreateFts(conn) {
     );
     conn.exec("CREATE VIRTUAL TABLE IF NOT EXISTS link_segments_fts USING fts5(text, link_id UNINDEXED, idx UNINDEXED)");
     conn.exec("CREATE VIRTUAL TABLE IF NOT EXISTS link_visual_fts USING fts5(text, link_id UNINDEXED, idx UNINDEXED)");
+    conn.exec("CREATE VIRTUAL TABLE IF NOT EXISTS link_sounds_fts USING fts5(text, link_id UNINDEXED, idx UNINDEXED)");
     ftsAvailable = true;
   } catch {
     ftsAvailable = false;

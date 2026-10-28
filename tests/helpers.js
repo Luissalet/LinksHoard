@@ -11,6 +11,12 @@ import { shutdownDigest } from "../server/videodigest.js";
 
 // The tests serve pages and media from 127.0.0.1; the app refuses loopback addresses unless this is set (tests/net-policy.test.js turns it off to check).
 process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
+// A test's fabricated providers must never discover or launch production apps.
+process.env.HOARD_HUB_URL = 'http://127.0.0.1:1';
+// The family folder (~/.hoard/bin) may hold the real yt-dlp of a developer machine: tests that look for programs must not find it.
+process.env.HOARD_HOME = path.join(os.tmpdir(), "links-hoard-test-hoard-home");
+// ...and must never start the real Sentidos worker of this machine: point its environment at a folder that does not exist.
+process.env.LINKS_SENTIDOS_VENV = path.join(os.tmpdir(), "links-hoard-test-no-sentidos-venv");
 
 export function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-"));

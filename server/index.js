@@ -9,6 +9,7 @@ import { stopScheduler } from "./watches.js";
 import { shutdownMedia } from "./media.js";
 import { shutdownVideo } from "./videoinsight.js";
 import { shutdownDigest } from "./videodigest.js";
+import { shutdownSentidos } from "./sentidos.js";
 import { shutdown as shutdownSessions } from "./site-login.js";
 import { close as closeDb } from "./db.js";
 import { setPublicUrl } from "./public-url.js";
@@ -31,6 +32,7 @@ try {
       stopBackground();
       await shutdownSessions().catch(() => {});
       await shutdownDigest();
+      await shutdownSentidos();
       await shutdownVideo();
       await shutdownMedia();
       await stopFetcher();

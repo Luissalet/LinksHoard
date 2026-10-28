@@ -16,6 +16,7 @@ import { initVideoInsight } from "./videoinsight.js";
 import { installVideoRoutes } from "./video-routes.js";
 import { initVideoDigest } from "./videodigest.js";
 import { installDigestRoutes } from "./digest-routes.js";
+import { installSentidosRoutes } from "./sentidos-routes.js";
 import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,7 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   installMediaRoutes(app);
   installVideoRoutes(app);
   installDigestRoutes(app);
+  installSentidosRoutes(app);
   installAgentRoutes(app, { token });
   const DIST = path.join(ROOT, "dist");
   if (serveStatic && fs.existsSync(DIST)) installSpa(app, DIST, { express });

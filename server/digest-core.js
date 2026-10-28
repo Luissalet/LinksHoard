@@ -329,15 +329,17 @@ export function renderCard(m, tokens = {}) {
   if (s?.focus_answer) out.push("", `**Sobre el foco** ${gen(s.model)}: ${s.focus_answer}`);
   if (s?.tldr) out.push("", `**Resumen** ${gen(s.model)}: ${s.tldr}`);
   if (s?.key_points?.length) out.push("", `**Puntos clave** ${gen(s.model)}:`, ...s.key_points.map((p) => `- ${p}`));
+  const heard = soundHeadline(m);
+  if (heard) out.push("", `**Suena** ${gen("Sentidos")}: ${heard}`);
   if (m.notes?.length) out.push("", "**Avisos:**", ...m.notes.map((n) => `- ${n}`));
   const t = tokens;
   if (t.full) {
     out.push("", "**Coste de leer más** (tokens aprox.):",
-      `- index.md (capítulos): ~${t.index} · visual.md (pantalla, OCR): ~${t.visual} · transcript.md (literal): ~${t.transcript} · digest.md (todo): ~${t.full}`);
+      `- index.md (capítulos): ~${t.index} · visual.md (pantalla, OCR): ~${t.visual} · ${t.sound ? `sound.md (música, efectos): ~${t.sound} · ` : ""}transcript.md (literal): ~${t.transcript} · digest.md (todo): ~${t.full}`);
     if (t.overview_image) out.push(`- overview.jpg (mosaico de ${m.overview_tiles || 0} fotogramas con su tiempo): ~${t.overview_image}`);
     if (t.naive_5s) out.push(`- Para comparar, mirar el vídeo a un fotograma cada 5 s costaría ~${t.naive_5s}.`);
   }
-  out.push("", "**Cómo pedir más:** video_digest_read (capa o tramo de tiempo), video_ask (pregunta con citas), video_find (buscar), video_frame (fotograma exacto en un instante).");
+  out.push("", "**Cómo pedir más:** video_digest_read (capa o tramo de tiempo: card, index, visual, sound, transcript, full), video_ask (pregunta con citas), video_find (buscar palabras, texto en pantalla o sonidos), video_frame (fotograma exacto en un instante), audio_describe / audio_timeline (analizar el sonido a fondo).");
   return out.join("\n");
 }
 
@@ -353,6 +355,8 @@ export function renderIndex(m) {
     out.push(`### ${c.id} · [${span(c.start, c.end)}] ${c.title ? `${c.title} ${gen(model)}` : ""}${star}`.trimEnd());
     if (c.summary) out.push(`${c.summary} ${gen(model)}`);
     else if (c.said) out.push(`Dice (literal, inicio): «${oneLine(c.said, 220)}»`);
+    const heard = soundIn(m, c.start, c.end);
+    if (heard) out.push(`Suena: ${oneLine(heard, 160)} *(gen.)*`);
     const screens = (m.visual || []).filter((v) => v.start < c.end && v.end > c.start && v.same_as === null);
     // the index stays lean: at most five shots per chapter, the ones worth looking at first, in time order
     const shown = screens.filter((v) => v.ocr || v.caption || v.important)
@@ -392,6 +396,55 @@ export function renderVisual(m, { from = 0, to = Infinity } = {}) {
   return out.join("\n").trimEnd();
 }
 
+const firstClause = (label) => String(label || "").split(" | ")[0].trim();
+
+/** The reading of the soundtrack stretch that overlaps [start, end] the most, or "". */
+export function soundIn(m, start, end) {
+  const sections = m.sound?.status === "done" ? m.sound.sections || [] : [];
+  let best = null, bestOverlap = 0;
+  for (const s of sections) {
+    const overlap = Math.min(end, s.end) - Math.max(start, s.start);
+    if (overlap > bestOverlap) { best = s; bestOverlap = overlap; }
+  }
+  return best ? firstClause(best.label) : "";
+}
+
+/** A line for the card: the distinct readings of the first stretches of the soundtrack. */
+export function soundHeadline(m) {
+  const sections = m.sound?.status === "done" ? m.sound.sections || [] : [];
+  const seen = [];
+  for (const s of sections) { const c = firstClause(s.label); if (c && !seen.includes(c)) seen.push(c); if (seen.length >= 3) break; }
+  const tempo = m.sound?.music?.tempo ? ` · pulso ~${Math.round(m.sound.music.tempo)} BPM` : "";
+  // AudioSet's strongest classes over the whole soundtrack (the generic "Music" and "Speech" say little)
+  const total = new Map();
+  for (const s of sections) for (const a of s.ast || []) if (!["Music", "Speech", "Silence"].includes(a.name)) total.set(a.name, (total.get(a.name) || 0) + a.score * Math.max(1, s.end - s.start));
+  const classes = [...total.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name);
+  const audioset = classes.length ? ` · AudioSet: ${classes.join(", ")}` : "";
+  return seen.length ? `${seen.join("; ")}${tempo}${audioset}. Detalle en sound.md.` : "";
+}
+
+/** What the soundtrack sounds like (music, effects, ambience), stretch by stretch. */
+export function renderSound(m, { from = 0, to = Infinity } = {}) {
+  const s = m.sound;
+  const out = ["## Qué suena (generado, Sentidos)", ""];
+  if (!s) return [...out, "(no se analizó el sonido: Sentidos no estaba disponible al crear este digest)"].join("\n");
+  if (s.status !== "done") return [...out, `(sin análisis de sonido: ${s.error || s.status})`].join("\n");
+  out.push("> Música, efectos y ambiente leídos en local con CLAP y AudioSet. Son estimaciones del modelo, no hechos: compruébalas con su marca de tiempo. La voz está en la transcripción.", "");
+  const l = s.loudness;
+  const facts = [l?.lufs !== undefined && l?.lufs !== null && `volumen ${l.lufs} LUFS`, l?.true_peak !== undefined && l?.true_peak !== null && `pico ${l.true_peak} dBTP`, s.music?.tempo && `pulso ~${Math.round(s.music.tempo)} BPM`].filter(Boolean);
+  if (facts.length) out.push(`Medido: ${facts.join(" · ")}.`, "");
+  const items = (s.sections || []).filter((x) => x.end > from && x.start < to);
+  if (!items.length) out.push("(sin tramos en ese intervalo)");
+  for (const x of items) {
+    const ast = (x.ast || []).map((a) => `${a.name} ${a.score}`).join(", ");
+    out.push(`- [${span(x.start, x.end)}] ${x.label}${ast ? ` · AudioSet: ${ast}` : ""}`);
+  }
+  const events = (s.events || []).filter((e) => e.t >= from && e.t < to);
+  if (events.length) out.push("", "Golpes y efectos más expuestos (pistas débiles):", ...events.map((e) => `- [${clock(e.t)}] ${e.label}${e.kind ? ` (${e.kind.toLowerCase()})` : ""}, +${e.over_bed_db} dB sobre el fondo`));
+  if (s.note) out.push("", `*${s.note}*`);
+  return out.join("\n");
+}
+
 /** The literal transcript in timed paragraphs. */
 export function renderTranscript(m, { from = 0, to = Infinity } = {}) {
   const t = m.transcript || {};
@@ -409,5 +462,5 @@ export function renderTranscript(m, { from = 0, to = Infinity } = {}) {
 
 /** The whole dossier. */
 export function renderDigest(m, tokens = {}) {
-  return [renderCard(m, tokens), renderIndex(m), renderVisual(m), renderTranscript(m)].join("\n\n---\n\n") + "\n";
+  return [renderCard(m, tokens), renderIndex(m), renderVisual(m), ...(m.sound ? [renderSound(m)] : []), renderTranscript(m)].join("\n\n---\n\n") + "\n";
 }

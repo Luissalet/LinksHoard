@@ -18,6 +18,7 @@ import * as links from "./links.js";
 import * as media from "./media.js";
 import { runProcess, runCapture } from "./hoard-commons/media.js";
 import { transcribe as famTranscribe, serviceAvailable } from "./hoard-commons/fam-services.js";
+import * as sentidos from "./sentidos.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VIDEO_EXT = new Set([".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".flv", ".ts", ".3gp"]);
@@ -310,7 +311,9 @@ async function famProvider(wav, { language }) {
 let whisperChecked = null;
 async function pythonWithWhisper() {
   if (whisperChecked) return whisperChecked.cmd ? whisperChecked : null;
-  const names = [process.env.LINKS_PYTHON, "python", "python3", "py"].filter(Boolean);
+  // the app's own Sentidos environment ships faster-whisper, so it comes right after an explicit LINKS_PYTHON
+  const own = sentidos.isInstalled() ? sentidos.venvPython() : null;
+  const names = [process.env.LINKS_PYTHON, own, "python", "python3", "py"].filter(Boolean);
   for (const cmd of names) {
     const r = await runCapture({ cmd, args: [] }, ["-c", "import faster_whisper"], { timeoutMs: 20_000, lowPriority: false });
     if (r.code === 0) { whisperChecked = { cmd }; return whisperChecked; }

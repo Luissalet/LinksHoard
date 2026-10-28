@@ -17,6 +17,8 @@ import { resurface, resurfaceSettings } from "./resurface.js";
 import { readingPlan, readingPlanInput } from "./reading-plan.js";
 import { articleSource } from "./article-source.js";
 import { askLink } from "./article-questions.js";
+import * as sounds from "./sentidos-tools.js";
+import * as sentidos from "./sentidos.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
 Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
@@ -34,7 +36,8 @@ Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository
 A finished download also lists its files in deliverables: an assistant that can hand files to the user (Faustus turns them into download links that work on the desktop and on the phone) should give the user those links; the file stays in the downloads folder and the link in the library either way.
 When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed. A public YouTube video downloads without an account (the app retries with alternative YouTube players when YouTube asks for a sign-in). When a download fails because the site wants an account, the result carries login: { site, label }: offer site_login, which opens a browser window on the computer where Links runs so the user signs in there (never ask for or type the password yourself); once site_sessions shows that site signed in, call media_retry. site_logout forgets a site's session.
 For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
-To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).`;
+To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).
+Sentidos is the listening engine (local CLAP + AudioSet, no cloud): audio_describe says what a file, a saved link or a URL sounds like, audio_match checks it against a description, audio_find locates a sound by description (without a source it searches the soundtracks of the digests), audio_timeline gives music, effects and ambience by sections, audio_measure the loudness and levels, audio_realness whether it was recorded or synthesized, audio_sheet a PNG of the soundtrack. Every label is an estimate with a z-score: report the verdict (strong, plausible, weak, no match) and never present a weak or unvalidated reading as fact; speech is the transcript's job, not Sentidos'. The first call loads the models (about a minute); audio_status shows whether they are installed and sets them up. A video digest includes a "sound" layer when the engine is ready.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
 
@@ -79,6 +82,12 @@ const tool = (name, description, schema, hints, run) => ({
   run,
 });
 const RO = { readOnlyHint: true, idempotentHint: true };
+const SOUND_SRC = {
+  path: z.string().trim().max(1000).optional().describe("Absolute path of an audio or video file"),
+  id: z.string().optional().describe("A saved link that has a downloaded audio or video"),
+  url: z.string().optional().describe("A link to download as audio when it is not saved yet"),
+};
+const SOUND_SPAN = { start: z.number().min(0).optional().describe("Seconds: analyse from here"), end: z.number().min(0).optional().describe("Seconds: analyse up to here") };
 const SECTIONS = z.array(z.tuple([z.number().min(0), z.number().positive()])).max(10).optional()
   .describe("Only these parts: [[start_s, end_s], ...] (at most 10, 0 <= start < end); several parts give one file each");
 
@@ -572,10 +581,10 @@ export const TOOLS = [
     }),
 
   tool("video_digest_read",
-    "Read one layer or one time span of a video digest — leer el digest, tramo del vídeo\nReturns the text of a finished digest: brief (card + chapter index), card, index, visual (every segment with literal screen text), transcript (literal, timed) or full. from/to (seconds or m:ss) cut the visual and transcript layers to that span, so a long video is read piece by piece.\nSinónimos: lee la transcripción, qué dice entre el minuto 3 y el 5, qué sale en pantalla, capa visual del vídeo",
+    "Read one layer or one time span of a video digest — leer el digest, tramo del vídeo\nReturns the text of a finished digest: brief (card + chapter index), card, index, visual (every segment with literal screen text), sound (what the soundtrack sounds like, generated), transcript (literal, timed) or full. from/to (seconds or m:ss) cut the visual and transcript layers to that span, so a long video is read piece by piece.\nSinónimos: lee la transcripción, qué dice entre el minuto 3 y el 5, qué sale en pantalla, capa visual del vídeo",
     z.object({
       id: z.string().optional(), url: z.string().optional(),
-      level: z.enum(["brief", "card", "index", "visual", "transcript", "full"]).default("brief"),
+      level: z.enum(["brief", "card", "index", "visual", "sound", "transcript", "full"]).default("brief"),
       from: z.union([z.string(), z.number()]).optional(), to: z.union([z.string(), z.number()]).optional(),
       max_chars: z.number().int().min(1000).max(400000).default(60000),
     }), RO,
@@ -592,7 +601,7 @@ export const TOOLS = [
     async (a) => { const link = resolveLinkOrFail(a); return { title: link.title, ...(await digest.askVideo(link.id, a.question)) }; }),
 
   tool("video_find",
-    "Search what is said and shown in digested videos — buscar en vídeos, texto en pantalla\nFull-text search over transcripts and screen text (OCR) of one video (id/url) or all of them. Each hit has the time, the line with the lines before and after, or the screen text and its frame path.\nSinónimos: en qué vídeo sale, busca en el vídeo, dónde aparece en pantalla, minuto en que dice",
+    "Search what is said and shown in digested videos — buscar en vídeos, texto en pantalla\nFull-text search over transcripts, screen text (OCR) and the soundtrack readings of one video (id/url) or all of them. Each hit has the time, the line with the lines before and after, the screen text and its frame path, or the sound label (where: sound).\nSinónimos: en qué vídeo sale, busca en el vídeo, dónde aparece en pantalla, minuto en que dice",
     z.object({ query: z.string().trim().min(1).max(200), id: z.string().optional(), url: z.string().optional(), limit: z.number().int().min(1).max(100).default(20) }), RO,
     (a) => {
       const link = a.id || a.url ? resolveLinkOrFail(a) : null;
@@ -609,6 +618,60 @@ export const TOOLS = [
     "List the video digests and their state — digests de vídeo, vídeos digeridos\nThe latest digests: title, url, status, stage while running, focus, duration and the tokens of their brief level.\nSinónimos: qué vídeos he digerido, estado del digest, lista de vídeos resumidos",
     z.object({ limit: z.number().int().min(1).max(200).default(30) }), RO,
     (a) => ({ digests: digest.listDigests({ limit: a.limit }) })),
+
+  // ---- Sentidos: listening (sentidos.js, sentidos-tools.js) ----
+  tool("audio_describe",
+    "Describe what a sound is — qué suena, identificar sonido, describir audio\nListens locally (CLAP + AudioSet, no cloud) to a file (path), a saved link (id) or a URL and says what it sounds like: closest descriptions of a calibrated vocabulary with z-score and verdict (strong z>=3, plausible, weak, no match), AudioSet labels, loudness and shape. Labels are estimates: report the verdict, not certainty. The first call loads the models (~1 min).\nSinónimos: qué suena aquí, qué es este ruido, identifica el sonido, de qué es este audio, describe el audio",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, top: z.number().int().min(1).max(20).default(8), with_data: z.boolean().default(false).describe("Add the numbers (z, cosine) next to the reading") }), RO,
+    (a) => sounds.runTool("describe", a, { withData: a.with_data })),
+
+  tool("audio_match",
+    "Check if a sound matches a description — suena a, comprobar sonido, ¿es esto un…?\nHow well a file, link or URL matches your words ('a dog barking', 'epic orchestral music'): z-score against a calibrated vocabulary, its rank, a verdict (strong, plausible, weak, no match) and what it sounds like instead. alts are competing descriptions to choose between.\nSinónimos: suena a, es un ladrido, contiene música épica, comprueba si hay aplausos, coincide con",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, query: z.string().trim().min(2).max(300), alts: z.array(z.string().trim().min(2).max(300)).max(8).optional(), with_data: z.boolean().default(false) }), RO,
+    (a) => sounds.runTool("match", a, { withData: a.with_data })),
+
+  tool("audio_find",
+    "Find a sound by description — buscar en el audio, en qué minuto suena\nGive query and a source (path, id or url): the best moments inside it with start/end and z. Without a source it searches the soundtracks already indexed by video digests (words, instant); deep: true also ranks the downloaded audio and video files by how much they sound like the query (slow, CPU).\nSinónimos: en qué momento suena, busca el sonido de, dónde hay un portazo, encuentra la música, localiza el efecto",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, query: z.string().trim().min(2).max(300), kind: z.enum(["auto", "event", "texture"]).default("auto").describe("event: a short hit; texture: a stretch; auto decides"), top: z.number().int().min(1).max(20).default(5),
+      deep: z.boolean().default(false).describe("No source: also rank the downloaded files with the audio model"), with_data: z.boolean().default(false) }), RO,
+    async (a) => {
+      if (a.path || a.id || a.url) return sounds.runTool("find", a, { withData: a.with_data });
+      const indexed = sounds.searchSounds(a.query, { limit: a.top * 2 });
+      const out = { ok: true, query: a.query, indexed };
+      if (a.deep) out.library = await sounds.rankLibrary(a.query, { top: a.top });
+      else out.note = indexed.length ? "Aciertos en las bandas sonoras de los digests; con deep: true se ordenan además los archivos descargados." : "Ningún digest tiene esas palabras en su banda sonora; prueba con deep: true o pasa un archivo.";
+      return out;
+    }),
+
+  tool("audio_timeline",
+    "Timeline of a soundtrack — música, efectos y ambiente por tramos\nSections with what plays in each (genre, mood, instruments, ambience, AudioSet), tagged events (hits, whooshes, footsteps, voice), loudness (LUFS, true peak, LRA), drops and pulse. Source: path, id or url; start/end zoom in; detail low|normal|high trades time for tags.\nSinónimos: qué música suena, línea de tiempo del audio, banda sonora, secciones del audio, efectos de sonido",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, detail: z.enum(["low", "normal", "high"]).default("normal"), with_data: z.boolean().default(false) }), RO,
+    (a) => sounds.runTool("timeline", a, { withData: a.with_data })),
+
+  tool("audio_measure",
+    "Measure an audio file — volumen, LUFS, picos, ruido, brillo\nNumbers without models (fast): integrated and short-term loudness, true peak, loudness range, noise floor, clipping, stereo width and correlation, brightness, bandwidth, attack, onsets per second. Source: path, id or url.\nSinónimos: cuánto volumen tiene, mide el audio, nivel de ruido, está saturado, picos del audio, loudness",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, music: z.boolean().default(false).describe("Also tempo and beats"), with_data: z.boolean().default(false) }), RO,
+    (a) => sounds.runTool("measure", a, { withData: a.with_data })),
+
+  tool("audio_realness",
+    "Real recording or synthesized? — ¿sonido real o generado?\nEstimates per 4 s window and overall whether the audio was recorded or pro-produced (p_real) or leans synthesized, with its weak calibration stated. A hint to check, not a proof; it misses code-made layers under a louder real mix.\nSinónimos: es real el audio, audio generado por IA, sonido sintetizado, grabación o sintético, detecta audio falso",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, ast: z.boolean().default(false).describe("Also check AudioSet speech/music evidence"), with_data: z.boolean().default(false) }), RO,
+    (a) => sounds.runTool("realness", a, { withData: a.with_data })),
+
+  tool("audio_sheet",
+    "Picture of a soundtrack — hoja de sonido, espectrograma\nWrites a PNG (spectrogram, waveform, loudness, labelled events and sections) of a file, link or URL and returns its absolute path and size; open it only when the picture matters. start/end zoom; detail low|normal|high.\nSinónimos: espectrograma, dibuja el audio, forma de onda, hoja del audio, imagen del sonido",
+    z.object({ ...SOUND_SRC, ...SOUND_SPAN, detail: z.enum(["low", "normal", "high"]).default("normal") }), { idempotentHint: true },
+    (a) => sounds.runTool("sheet", a)),
+
+  tool("audio_status",
+    "State of Sentidos, the listening engine — motor de sonido, preparar modelos\nSays whether the engine is installed, its models (CLAP, AudioSet; ~1.1 GB, downloaded once) are ready and the worker runs. action setup builds the environment and downloads the models in the background (poll with status); start / stop control the worker (it also starts on the first audio_* call and stops when idle).\nSinónimos: está listo el audio, instala sentidos, descarga los modelos de sonido, arranca el motor de audio",
+    z.object({ action: z.enum(["status", "setup", "start", "stop"]).default("status") }), { idempotentHint: true },
+    async (a) => {
+      if (a.action === "setup") sentidos.setup();
+      else if (a.action === "start") await sentidos.start();
+      else if (a.action === "stop") await sentidos.stop();
+      return sentidos.status();
+    }),
 ];
 
 /** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
@@ -619,6 +682,7 @@ export function callTimeoutMs(name, args = {}) {
   if (name === "video_digest" && args.wait !== false) return ((Number(args.timeout_s) || 600) + 30) * 1000;
   if (name === "video_ask") return 960_000;
   if (name === "video_frame") return 120_000;
+  if (name.startsWith("audio_")) return name === "audio_status" ? 120_000 : (((Number(args.timeout_s) || 0) + 1200) * 1000);
   if (name === "media_status" && args.wait_s) return (Number(args.wait_s) + 30) * 1000;
   if (name === "media_tools" && args.update) return 6 * 60_000;
   if (name === "media_probe" || name === "media_info") return 120_000;

@@ -61,6 +61,16 @@ export const api = {
     fileUrl: (id, name) => `/api/links/${id}/digest/files/${name}`,
     frameUrl: (id, t, width = 960) => `/api/links/${id}/digest/frame${qs({ t, width })}`,
   },
+  sentidos: {
+    status: () => request("GET", "/api/sentidos/status"),
+    setup: () => request("POST", "/api/sentidos/setup"),
+    start: () => request("POST", "/api/sentidos/start"),
+    stop: () => request("POST", "/api/sentidos/stop"),
+    saveSettings: (data) => request("PUT", "/api/sentidos/settings", data),
+    sources: () => request("GET", "/api/sentidos/sources"),
+    run: (data) => request("POST", "/api/sentidos/run", data),
+    sheetUrl: (name) => `/api/sentidos/sheet/${encodeURIComponent(name)}`,
+  },
   resurface: (count) => request("GET", `/api/resurface${qs({ count })}`),
   settings: {
     get: () => request("GET", "/api/settings"),

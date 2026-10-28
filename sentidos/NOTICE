@@ -1,0 +1,11 @@
+Sentidos (Links Hoard) is derived from earshot 0.4.0 (https://github.com/Leonxlnx/earshot),
+Copyright (c) 2026 Leon Lin, MIT licence (LICENSE.earshot).
+
+Kept from earshot: audio I/O and caching, the CLAP and AudioSet model loaders with pinned revisions, the calibrated
+description vocabulary and its statistics, describe, match, search (find / rank), timeline, sheet, realness, the
+measurements, and the picture-cut detector. Left out: the sound forge, the sound bank and kits, the launch-film critique,
+the HTML gallery and the audio-LLM upload.
+
+Models downloaded on first use (not part of this repository):
+- laion/larger_clap_general (Apache-2.0)
+- MIT/ast-finetuned-audioset-10-10-0.4593 (BSD-3-Clause)

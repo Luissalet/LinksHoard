@@ -11,10 +11,11 @@ export const DIGEST_STATUS = {
   failed: "Falló.",
 };
 const STAGES = { media: "vídeo y transcripción", metadata: "datos de la publicación", visual: "recorrido de la imagen", frames: "fotogramas",
-  ocr: "texto en pantalla", vision: "descripción de planos", chapters: "capítulos", summary: "resumen con el modelo local", sheets: "mosaico", write: "escritura" };
+  ocr: "texto en pantalla", vision: "descripción de planos", sound: "banda sonora (música y efectos)", chapters: "capítulos", summary: "resumen con el modelo local", sheets: "mosaico", write: "escritura" };
 const TABS = [
   { level: "brief", label: "Ficha e índice" },
   { level: "visual", label: "Pantalla (OCR)" },
+  { level: "sound", label: "Qué suena" },
   { level: "transcript", label: "Transcripción" },
 ];
 const fmt = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n ?? 0));

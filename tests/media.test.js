@@ -228,7 +228,7 @@ test("tool lookup order: env, PATH, sibling app folder, python module", async ()
   const fakes = installFakes(path.join(dir, "fakes"));
   const empty = path.join(dir, "empty");
   fs.mkdirSync(empty);
-  const noEnv = { PATH: empty, FAKE_DIR: fakes.dir, FAKE_LOG: fakes.log };
+  const noEnv = { PATH: empty, FAKE_DIR: fakes.dir, FAKE_LOG: fakes.log, HOARD_HOME: path.join(dir, "no-hoard-home") };
   try {
     // 1. nothing anywhere
     resetToolsCache();

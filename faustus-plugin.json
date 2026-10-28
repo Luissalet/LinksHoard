@@ -9,17 +9,11 @@
       "launcher": "/api/copilot/launcher.js",
       "context": "window.hoardCopilot.context",
       "refresh": "window.hoardCopilot.onTurnEnd"
-    },
-    "absorbed_by": {
-      "id": "borges",
-      "repository": "https://github.com/Luissalet/BorgesHoard",
-      "module": "links",
-      "standalone": false
     }
   },
   "id": "links",
-  "name": "Links Hoard · Borges",
-  "purpose": "Absorbed by Borges's Hoard. Native compatibility identity only; no standalone server. Read-later bookmark library with extracted article text, tags and highlights, stored locally; also downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk.",
+  "name": "Links Hoard",
+  "purpose": "Read-later bookmark library with extracted article text, tags and highlights, stored locally; downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk, signs in to sites from the app, and leaves a layered text digest of a video (speech, frames, on-screen text, what it sounds like) that an assistant can read, search and question; listens to audio locally (what a sound is, music and effects by section, loudness, recorded or synthesized) with its Sentidos engine.",
   "capabilities": [
     "bookmarks",
     "read-later",
@@ -41,7 +35,17 @@
     "resurface",
     "time-budgeted-reading-plan",
     "daily-digest",
-    "job-events"
+    "job-events",
+    "video-digest",
+    "video-insight",
+    "article-questions",
+    "site-sign-in",
+    "sound-description",
+    "sound-search",
+    "soundtrack-timeline",
+    "audio-measurement",
+    "soundtrack-digest",
+    "faustus-copilot"
   ],
   "placeholders": [
     "LINKS_DIR",
@@ -49,17 +53,16 @@
     "TOKEN_FILE"
   ],
   "defaults": {
-    "APP_URL": "http://127.0.0.1:5184/links",
-    "TOKEN_FILE": "{LINKS_DIR}/data/mcp-token",
-    "BORGES_DIR": "{LINKS_DIR}/../Borges's Hoard"
+    "APP_URL": "http://127.0.0.1:5181",
+    "TOKEN_FILE": "{LINKS_DIR}/data/mcp-token"
   },
   "app": {
-    "url_default": "http://127.0.0.1:5184/links",
-    "ui_url": "http://127.0.0.1:5184/",
+    "url_default": "http://127.0.0.1:5181",
+    "ui_url": "{APP_URL}",
     "health": {
       "path": "/api/health",
       "expect": {
-        "service": "absorbed-links"
+        "service": "links-hoard"
       }
     },
     "identify": {
@@ -69,21 +72,31 @@
       "title": [
         "links hoard"
       ]
+    },
+    "launch_hint": {
+      "kind": "process",
+      "executable": "node",
+      "argv": [
+        "server/index.js"
+      ],
+      "cwd": "{LINKS_DIR}",
+      "readiness": {
+        "url": "{APP_URL}/api/health",
+        "timeout_s": 20
+      }
     }
   },
   "mcp": {
     "transport": "stdio",
-    "command": "{BORGES_DIR}/venv/Scripts/python.exe",
+    "command": "node",
     "args": [
-      "{BORGES_DIR}/mcp_server.py"
+      "{LINKS_DIR}/server/mcp.js"
     ],
     "env": {
-      "BORGES_URL": "http://127.0.0.1:5184",
-      "BORGES_TOKEN_FILE": "{BORGES_DIR}/data/mcp-token"
+      "LINKS_URL": "{APP_URL}",
+      "LINKS_TOKEN_FILE": "{TOKEN_FILE}"
     },
-    "optional_env": [
-      "BORGES_DATA_DIR"
-    ]
+    "optional_env": []
   },
-  "notes": "Absorbed by Borges's Hoard: https://github.com/Luissalet/BorgesHoard. This identity preserves native tokens and references; it cannot start or stop the merged process. Start Borges explicitly and enable its module there."
+  "notes": "Own Hoard again (decision of 2026-10-28; it had been folded into Writer's Hoard). Keep the app running (npm start, or start it from Hoard Hub) while the assistant uses it: the MCP bridge proxies every call to the local server and never opens the database itself. save_link waits briefly for the background fetch to report a real title and excerpt. Writer calls this app as an external module to keep references. The audio_* tools need Sentidos prepared once (audio_status with action setup, or the Sentidos page): its own Python environment and about 1.1 GB of models, downloaded on first use."
 }

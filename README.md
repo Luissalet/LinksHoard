@@ -1,11 +1,7 @@
-> **Absorbed by [Writer's Hoard](https://github.com/Luissalet/Writers-Hoard-Desktop).**
-> This project's capabilities are maintained in the merged Hoard, with independent modules initially disabled.
-> The code and instructions below remain as historical reference; use the linked repository for the current installation.
-> The earlier absorption into Borges now continues within Writer.
-
-> **Absorbed by [Borges's Hoard](https://github.com/Luissalet/BorgesHoard).** All native functions, interface and data are preserved in the incorporated module. This Hub identity retains compatibility, tokens and references; it cannot launch a standalone server. Start Borges explicitly and enable only requested functions: modules and background automation initially stay OFF. Keep the original data directories.
->
-> The documentation below describes the historical engine; use the linked repository for current installation and operation.
+> **Links Hoard is its own Hoard again** (decision of 2026-10-28). It had been absorbed into Writer's Hoard; it now runs on its own
+> server and port (5181), with the app id `links`, its own data folder and its own MCP bridge, and Writer calls it as an external module
+> to store references. Everything the absorbed copy could do is here (the same 46 MCP tools, the same names) plus **Sentidos**, the
+> listening engine. Start it from the Hoard Hub or with `npm start`.
 
 # Links Hoard
 
@@ -69,6 +65,7 @@ The server binds to `127.0.0.1` only. If port 5181 is busy it walks up to the ne
 | `LINKS_VIDEO` / `LINKS_VIDEO_AUTO` / `LINKS_VIDEO_AUTO_DOWNLOAD` | Video insight: `LINKS_VIDEO=0` stops the background sweep (retries, new videos); `LINKS_VIDEO_AUTO=0` stops analysing a video as soon as a file for it exists; `LINKS_VIDEO_AUTO_DOWNLOAD=1` also downloads the video of every saved video link (off by default). |
 | `LINKS_VIDEO_MAX_FRAMES` / `LINKS_VIDEO_MAX_UPLOAD_MB` / `LINKS_VIDEO_RETRY_S` | Key-frame cap (default 24), largest attached file (default 500 MB), seconds before each retry (default `60,300,1800`). |
 | `LINKS_WHISPER_MODEL` / `LINKS_WHISPER_ALLOW_DOWNLOAD` / `LINKS_PYTHON` | Local fallback engine: faster-whisper model (default `base`, must already be in the cache unless `LINKS_WHISPER_ALLOW_DOWNLOAD=1`) and the Python that has it. |
+| `LINKS_SENTIDOS_VENV` / `LINKS_SENTIDOS_HOME` / `LINKS_SENTIDOS_BASE_PYTHON` / `LINKS_SENTIDOS_IDLE_MIN` | Sentidos (the listening engine): its Python environment (default `<repo>/.venv-sentidos`), its models folder (default `<data>/sentidos`), the Python that builds the environment, and the idle minutes before the worker stops (default 20, 0 = never). See [docs/SENTIDOS.md](docs/SENTIDOS.md). |
 | `LINKS_COOKIES_FILE` | Netscape cookies file for private posts (the setting in Ajustes wins). |
 | `LINKS_COOKIES_BROWSERS` | Comma-separated browsers to try for cookies, in order (default `firefox,chrome,edge,brave,chromium,vivaldi,opera`). |
 | `LINKS_LOGIN_BROWSER` | Browser executable for the sign-in window (default: the system's default browser when it is Chromium-based, else the first of Chrome, Edge, Brave, Vivaldi, Chromium found; Ajustes can pick one). |
@@ -161,6 +158,10 @@ Limits: needs ffmpeg; a video with no audio track gets `no_audio`; very long vid
 ## Video digest (watch a video for an assistant)
 
 Paste a link (a post on X with a video, YouTube, a reel) on the **Vídeos** page, or have an assistant call `video_digest`: the app downloads it, transcribes it, walks the whole picture, reads the screen text by OCR and writes chapters and a summary with the Hub's local models, then leaves a layered dossier under `<data>/video/<link id>/digest/` — `card.md` (source, post text, summary, key points, answer to your focus, what each layer costs), `index.md` (chapters with what is said and shown), `visual.md` (every visual segment with its literal screen text), `transcript.md`, `digest.md`, a 4×4 mosaic with timestamps and one frame per distinct shot. An assistant reads the brief level (card + index) for a few thousand tokens instead of hundreds of thousands for the frames, then asks (`video_ask`, answers with checked verbatim quotes and times), searches (`video_find`) or pulls the exact frame of an instant (`video_frame`). Literal and generated material are always labelled apart. From a shell: `node scripts/digest.mjs <url> --focus "…"`. Details, settings and limits: [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
+## Sentidos (the listening engine)
+
+The **Sentidos** page and the `audio_*` MCP tools listen to a sound on this machine with two local models (CLAP and AudioSet, CPU only, about 1.1 GB downloaded once, in a resident worker that starts on demand and stops when idle): `audio_describe` (what it sounds like, with a calibrated z-score and verdict per label), `audio_match` (does it sound like what you describe), `audio_find` (the moment a sound happens in a file; without a file, a search over the soundtracks of the video digests, and with `deep` over the downloaded files), `audio_timeline` (music, effects and ambience by section, loudness, drops, pulse), `audio_measure` (loudness, peaks, noise, no models), `audio_realness` (recorded or synthesized, weak calibration), `audio_sheet` (a PNG with spectrogram, waveform and events) and `audio_status` (install, start, stop). A source is a file `path`, a saved link `id` or a `url`. A video digest gains a **"qué suena"** layer (`sound.md`, `video_digest_read` level `sound`, searchable with `video_find`, citable by `video_ask`) when the engine is ready. Set it up from the page (**Preparar Sentidos**: own Python environment, packages and models, in the background). The engine is a detached fork of earshot 0.4.0 (MIT). Details, limits and how to read a verdict: [docs/SENTIDOS.md](docs/SENTIDOS.md).
+
 ## URL normalization (the dedupe key)
 
 Saving is idempotent on a normalized form of the URL (the family's shared rule, `normalizeUrl` of `hoard-commons/web.js`): `utm_*`, `fbclid`, `gclid`, `mc_*` and similar tracking params are stripped, the fragment is dropped, the host is lowercased, default ports and a trailing slash are removed (the bare root has no slash), the query is sorted, and a LinkedIn job link keeps only its job id. A scheme-less `example.com/page` is accepted and gets `https://`. When an older library is opened, the saved links are re-keyed to this form once. Saving an already-saved page (even with different tracking params) returns the existing link with `existing: true` instead of duplicating it.
@@ -240,5 +241,9 @@ npm run build
 ```
 
 Tests use temporary data directories and a local HTTP server for fixtures — nothing touches your real data or the network. A fake hub (`tests/fake-hub.js`) stands in for the family hub: it records the events and answers the proxied `cards_add`. Downloads are tested with small fake yt-dlp, gallery-dl and ffmpeg scripts (`tests/media-fakes.js`, selected with `LINKS_YTDLP=node:<script>`), so no real site or binary is needed. They cover URL normalization (and the one-time re-keying of an older library), the shared page fetcher (charset, PDFs and images, challenge pages, the byte cap, the address check), watches (ETag, blocked pages, the hub path, a silent baseline after an upgrade), the family media service (sections, limits, `media_info`, `media_subtitles`, `media_audio_for_asr`, private addresses), the real entry point (restart keeps the token, SIGTERM exits 0), Readability extraction against an HTML fixture, save idempotency, full-text search, the digest, highlights, bookmarks/URL-list import parsing, agent token auth, a full API round-trip, and for the family: highlights to cards (once each, `source_ref`, older Hypatia, hub down, chunks of 50), the `links.highlight.added` event, the "Para leer hoy" picks (ranking, cooldown, one list per day) and its daily digest, the canonical job events; and for downloads: platform detection, arguments per format and quality, progress parsing, the queue (order, cancel of a waiting and of the running download with its process tree), the gallery-dl fallback, cookies from browsers, the fallback players for the bot check, the sign-in window driven through a fake browser (`tests/fake-browser.js`: saving, closing by hand, a new profile's first window quitting, signing out), the saved link with its note, no overwriting, file streaming with Range, the REST routes and the MCP tools.
+
+Sentidos is tested with its Python worker replaced by a function (`setSentidosRunner`): the sources, the eight tools, the sound layer of a digest (built, searched, asked about, kept when the engine fails), the routes and the setup errors. The real worker is checked by hand on audio files (see [docs/SENTIDOS.md](docs/SENTIDOS.md)).
+
+Open goals and known issues are kept in [docs/OBJETIVOS.md](docs/OBJETIVOS.md) and [docs/REVISAR.md](docs/REVISAR.md) (in Spanish).
 
 Design and decisions: [`DESIGN.md`](DESIGN.md).

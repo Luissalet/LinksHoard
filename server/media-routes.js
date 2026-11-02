@@ -2,6 +2,7 @@
 // rest of /api. Errors bubble to the shared handler in app.js as { error }.
 import * as media from "./media.js";
 import * as sessions from "./site-login.js";
+import { readPost } from "./post-reader.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe esa descarga." });
 const truthy = (v) => v === "1" || v === "true" || v === true;
@@ -46,6 +47,10 @@ export function installMediaRoutes(app) {
   });
   app.delete("/api/sessions/:site", async (req, res, next) => {
     try { res.json(await sessions.logout(req.params.site)); } catch (e) { next(e); }
+  });
+
+  app.post("/api/posts/read", async (req, res, next) => {
+    try { res.json(await readPost(req.body || {})); } catch (e) { next(e); }
   });
 
   app.post("/api/media/probe", async (req, res, next) => {

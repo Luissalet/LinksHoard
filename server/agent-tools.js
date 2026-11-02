@@ -10,6 +10,7 @@ import { importTranscript } from "./transcript.js";
 import * as watches from "./watches.js";
 import * as media from "./media.js";
 import * as sessions from "./site-login.js";
+import { readPost } from "./post-reader.js";
 import * as video from "./videoinsight.js";
 import * as digest from "./videodigest.js";
 import { highlightsToCards, DEFAULT_DECK } from "./cards.js";
@@ -518,6 +519,11 @@ export const TOOLS = [
     "Forget Links' session on a site — cerrar sesión de YouTube/X/Instagram en Links\nDeletes that site's cookies from Links' browser profile and from the cookies file downloads use. The user's own browser is not touched.\nSinónimos: cierra la sesión de youtube en links, olvida mi cuenta de instagram, quita la sesión",
     z.object({ site: z.string().trim().min(1).max(40) }), { destructiveHint: true, idempotentHint: true },
     (a) => sessions.logout(a.site)),
+
+  tool("read_post",
+    "Read a social post as text with the signed-in session — leer un tuit, leer un post de Instagram\nOpens the post (X, Instagram, Threads, TikTok, Facebook, Reddit or any page) in Links' browser profile, where the user signed in themselves with site_login, without a window, and returns author, text, the page description, the link card and the links it contains (t.co and other short links resolved). Only reads: nothing is posted or liked. A login wall fails with code LOGIN_NEEDED and the site to sign in to (then site_login).\nSinónimos: qué dice este tuit, lee este post, texto de la publicación, de qué repo habla este tuit, leer instagram",
+    z.object({ url: z.string().trim().min(8).max(2000) }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => readPost({ url: a.url })),
 
   tool("media_delete",
     "Remove a download record, optionally its files — borrar descarga, quitar archivo descargado\nRemoves the record from the downloads list. With delete_files: true AND confirm: true it also deletes the downloaded files from the disk (permanent, there is no recycle bin): confirm with the user first. A running download must be cancelled first.\nSinónimos: borra la descarga, elimina el archivo descargado, quita de la lista de descargas, borrar el vídeo descargado",

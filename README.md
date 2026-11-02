@@ -126,6 +126,7 @@ REST routes (same local guard as the rest of `/api`):
 | `GET /api/sessions` | The sites with a sign-in button, whether each is signed in, the browser found and the open login window (no cookie values). |
 | `PUT /api/sessions/settings` | `{ browser }`: the browser for the sign-in window (`auto` = the default one). |
 | `POST /api/sessions/:site/login` · `POST /api/sessions/finish` · `POST /api/sessions/cancel` · `DELETE /api/sessions/:site` | Open the sign-in window / save now and close it / close it / sign the app out of a site. |
+| `POST /api/posts/read` | `{ url }`: a social post (X, Instagram, Threads, TikTok, Reddit, any page) as text: author, text, description, link card and the links inside (short links resolved). Read only. |
 | `POST /api/highlights/:id/to-cards` | `{ deck? }`: send one highlight to Hypatia (answers 200 with `{ok, status, deck, sent, skipped}`). |
 | `POST /api/links/:id/cards` · `POST /api/cards/from-highlights` | `{ deck?, resend? }` for one link / `{ link_id?, since?, deck?, resend? }` for everything that has not gone yet. |
 | `GET /api/resurface` | `?count=`: today's "Para leer hoy" list, each item with its `reason`. |
@@ -214,6 +215,7 @@ Tools:
 | `site_sessions` | Which sites the app holds a signed-in session for, the browser it uses and the login window if open. |
 | `site_login` | Open the sign-in window for a site on the computer the app runs on (`site`; `finish` saves now, `cancel` closes); the user signs in, never the assistant. |
 | `site_logout` | Forget the app's session on a site. |
+| `read_post` | Read a post as text with the signed-in session: opens it in the app's own browser profile without a window and, when the site refuses that (X answers 403 to window-less browsers), reads it through gallery-dl with the same session. A browser error page is never taken as the post; a login wall fails with `LOGIN_NEEDED`. |
 | `media_delete` | Remove a download record; its files only with `delete_files` and `confirm`. |
 | `video_digest` | Watch a video locally and return a layered text digest (`url` or `id`, `path`, `focus`, `level`, `force`, `wait`, `timeout_s`). See [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md). |
 | `video_digest_read` | One layer (`brief`, `card`, `index`, `visual`, `transcript`, `full`) or one span (`from`, `to`) of a digest. |

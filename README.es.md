@@ -123,6 +123,7 @@ Rutas REST (con la misma protección local que el resto de `/api`):
 | `GET /api/media/tools` · `POST /api/media/tools/update` | Programas encontrados con sus versiones / actualizarlos. |
 | `GET /api/media/settings` · `PUT /api/media/settings` | Carpeta de descargas y archivo de cookies. |
 | `GET /api/sessions` | Los sitios con botón de inicio de sesión, si cada uno tiene sesión, el navegador encontrado y la ventana abierta (sin valores de cookies). |
+| `POST /api/posts/read` | `{ url }`: un post (X, Instagram, Threads, TikTok, Reddit o cualquier página) como texto: autor, texto, descripción, tarjeta y enlaces (los acortados, resueltos). Solo lee. Usa la sesión iniciada; si el sitio rechaza el navegador sin ventana, lo lee con gallery-dl y la misma sesión. |
 | `PUT /api/sessions/settings` | `{ browser }`: el navegador de la ventana de inicio de sesión (`auto` = el predeterminado). |
 | `POST /api/sessions/:site/login` · `POST /api/sessions/finish` · `POST /api/sessions/cancel` · `DELETE /api/sessions/:site` | Abrir la ventana / guardar ya y cerrarla / cerrarla / cerrar la sesión de la aplicación en un sitio. |
 | `POST /api/highlights/:id/to-cards` | `{ deck? }`: enviar un subrayado a Hypatia (responde 200 con `{ok, status, deck, sent, skipped}`). |

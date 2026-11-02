@@ -298,7 +298,7 @@ function cdpConnect(url, { timeoutMs = 8000 } = {}) {
   });
 }
 
-async function withCdp(wsUrl, fn) {
+export async function withCdp(wsUrl, fn) {
   const c = await cdpConnect(wsUrl);
   try { return await fn(c); } finally { c.close(); }
 }
@@ -360,7 +360,7 @@ async function closeBrowser(handle) {
 
 let headlessQueue = Promise.resolve();
 /** Runs fn(ws) on a headless browser over the same profile (no window), one at a time. */
-function withHeadless(fn) {
+export function withHeadless(fn) {
   const run = headlessQueue.then(async () => {
     const browser = findBrowser();
     if (!browser) throw noBrowser();
@@ -558,7 +558,7 @@ export async function logout(id) {
   return list();
 }
 
-function sitesView(status = readStatus()) {
+export function sitesView(status = readStatus()) {
   return SITES.map((s) => {
     const st = status.sites?.[s.id] || {};
     return { id: s.id, label: s.label, logged_in: !!st.logged_in, since: st.since || null, captured_at: st.captured_at || null, cookies: st.cookies || 0 };

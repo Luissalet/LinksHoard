@@ -65,8 +65,21 @@ export default function SiteSaver({ notify, initialUrl = "", onSaved, onClose })
     return () => clearTimeout(timer.current);
   }, [job, notify, onSaved]);
 
+  const [history, setHistory] = useState([]);
+  const loadHistory = async () => { try { setHistory((await api.site.crawls()).crawls || []); } catch { /* keep the last list */ } };
+  const jobStatus = job?.status;
+  useEffect(() => { loadHistory(); }, [jobStatus]);
+
   const cancel = () => run(async () => setJob(await api.site.crawlCancel(job.id)), null);
   const resume = () => run(async () => setJob(await api.site.crawlResume(job.id)), null);
+  const openJob = (id) => run(async () => setJob(await api.site.crawlGet(id)), null);
+  const resumeJob = (id) => run(async () => setJob(await api.site.crawlResume(id)), null);
+  // removes the job record only: the pages it saved stay in the library
+  const removeJob = (h) => run(async () => {
+    await api.site.crawlDelete(h.id);
+    if (job?.id === h.id) setJob(null);
+    await loadHistory();
+  }, `Rastreo quitado del historial; sus ${h.saved} páginas siguen en la biblioteca.`);
   const active = job && ["queued", "running"].includes(job.status);
   const pct = job ? Math.min(100, Math.round((job.done / Math.max(1, Math.min(picked.size || job.found, job.found || 1))) * 100)) : 0;
 
@@ -147,6 +160,30 @@ export default function SiteSaver({ notify, initialUrl = "", onSaved, onClose })
             </ul>
           )}
           {job.status === "done" && <p className="help mt-2">Las páginas están en la biblioteca con la etiqueta <code>{job.tag}</code>.</p>}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-4" data-testid="crawl-history">
+          <h3 className="label mb-1">Rastreos anteriores</h3>
+          <p className="help mb-2">Quitar borra solo el registro del rastreo; las páginas que guardó siguen en la biblioteca.</p>
+          <ul className="max-h-[220px] overflow-auto rounded-lg border text-[13px]" style={{ borderColor: "var(--line)" }}>
+            {history.map((h) => {
+              const busyJob = ["queued", "running"].includes(h.status);
+              return (
+                <li key={h.id} className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 last:border-b-0" style={{ borderColor: "var(--line)" }}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{h.start_url}</span>
+                    <span className="help block">{STATUS_LABEL[h.status] || h.status} · {h.saved} guardadas · {(h.created_at || "").slice(0, 16).replace("T", " ")} · <code>{h.tag}</code></span>
+                  </span>
+                  <button type="button" className="btn btn-sm" onClick={() => openJob(h.id)}>Ver</button>
+                  {["cancelled", "interrupted", "failed"].includes(h.status) && <button type="button" className="btn btn-sm" onClick={() => resumeJob(h.id)}>Reanudar</button>}
+                  <button type="button" className="btn btn-sm" disabled={busy || busyJob} title={busyJob ? "Cancélalo antes de quitarlo" : "Quita el registro; las páginas guardadas se quedan"}
+                    onClick={() => removeJob(h)} aria-label={`Quitar rastreo ${h.tag}`}>Quitar</button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </section>

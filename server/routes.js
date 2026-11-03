@@ -3,7 +3,7 @@
 import * as links from "./links.js";
 import * as highlights from "./highlights.js";
 import { mapSite } from "./sitemap.js";
-import { mapInput, startCrawl, getCrawl, listCrawls, cancelCrawl, resumeCrawl } from "./sitecrawl.js";
+import { mapInput, startCrawl, getCrawl, listCrawls, cancelCrawl, resumeCrawl, deleteCrawl } from "./sitecrawl.js";
 import { runImport } from "./imports.js";
 import { enqueueFetch } from "./fetcher.js";
 import { renderSharePage } from "./share.js";
@@ -129,6 +129,13 @@ export function installRoutes(app, { version, dataDirConfigured }) {
   app.post("/api/crawls/:id/resume", (req, res) => {
     const job = resumeCrawl(req.params.id);
     return job ? res.json(job) : notFound(res);
+  });
+  // removes the job record only; the links it saved stay in the library (409 while it runs)
+  app.delete("/api/crawls/:id", (req, res, next) => {
+    try {
+      const out = deleteCrawl(req.params.id);
+      return out ? res.json(out) : notFound(res);
+    } catch (e) { next(e); }
   });
 
   // Highlights

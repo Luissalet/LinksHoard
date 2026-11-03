@@ -81,7 +81,9 @@ export function startCrawl(input) {
   let typed = start;
   try { typed = new URL(startRaw.trim()).href; } catch { /* keep normalized */ }
   const section = o.path_prefix ?? (explicit ? "/" : defaultPrefix(typed) || "/");
-  const options = { ...o, url: start, urls: explicit || undefined, path_prefix: section, depth: o.depth ?? (explicit ? 0 : 1) };
+  // start_href: the start page as typed, fetched as such ("/guide/" and "/guide" may both answer with different relative links)
+  const startHref = !explicit && sameHost(typed, start) ? typed.split("#")[0] : undefined;
+  const options = { ...o, url: start, start_href: startHref, urls: explicit || undefined, path_prefix: section, depth: o.depth ?? (explicit ? 0 : 1) };
   const id = uid();
   const ts = now();
   db().prepare("INSERT INTO crawl_jobs (id, start_url, host, options, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?)")
@@ -94,32 +96,51 @@ export function cancelCrawl(id) {
   const job = getCrawl(id);
   if (!job) return null;
   const handle = running.get(id);
-  if (handle) handle.cancel = true;
+  if (handle) { handle.cancel = true; handle.resumeAfter = false; }
   else if (["queued", "running", "interrupted"].includes(job.status)) patchJob(id, { status: "cancelled", finished_at: now() });
   return getCrawl(id);
+}
+
+/** Remove a crawl job record (its history), never the links it saved. A job still running must be cancelled first.
+ * Returns null when it does not exist; throws 409 while it runs. */
+export function deleteCrawl(id) {
+  const job = getCrawl(id);
+  if (!job) return null;
+  if (running.has(id)) throw Object.assign(new Error("El rastreo sigue en marcha: cancélalo antes de borrarlo."), { status: 409 });
+  db().prepare("DELETE FROM crawl_jobs WHERE id = ?").run(id);
+  return { ok: true, deleted: id, links_kept: job.saved, tag: job.tag, note: "Solo se borra el registro del rastreo; las páginas guardadas siguen en la biblioteca." };
 }
 
 /** Run a stopped, cancelled, failed or interrupted job again; pages already saved are skipped, so it only does the rest. */
 export function resumeCrawl(id) {
   const job = getCrawl(id);
   if (!job) return null;
-  if (running.has(id)) return job;
+  const handle = running.get(id);
+  if (handle) {
+    // still winding down after a cancel: run it again as soon as it has stopped instead of dropping the request
+    if (handle.cancel && !handle.stopping) handle.resumeAfter = true;
+    return job;
+  }
   patchJob(id, { status: "queued", found: 0, done: 0, saved: 0, skipped: 0, failed: 0, current: "", error: "", results: "[]", finished_at: null });
   launch(id);
   return getCrawl(id);
 }
 
 function launch(id) {
-  const handle = { cancel: false, stopping: false, promise: null };
+  const handle = { cancel: false, stopping: false, resumeAfter: false, promise: null };
   running.set(id, handle);
   handle.promise = run(id, handle)
     .catch((e) => patchJob(id, { status: "failed", error: String(e?.message || e).slice(0, 300), finished_at: now() }))
-    .finally(() => running.delete(id));
+    .finally(() => {
+      running.delete(id);
+      if (handle.resumeAfter && !handle.stopping && isOpen()) resumeCrawl(id);
+    });
 }
 
-/** At boot: jobs that were running when the app stopped are marked interrupted and, unless LINKS_CRAWL_RESUME=0, continued. */
+/** At boot: jobs that were running when the app stopped (killed: queued/running; clean shutdown: interrupted) are marked
+ * interrupted and, unless LINKS_CRAWL_RESUME=0, continued. */
 export function initCrawls() {
-  const rows = db().prepare("SELECT id FROM crawl_jobs WHERE status IN ('queued', 'running')").all();
+  const rows = db().prepare("SELECT id FROM crawl_jobs WHERE status IN ('queued', 'running', 'interrupted')").all();
   for (const { id } of rows) {
     patchJob(id, { status: "interrupted" });
     if (process.env.LINKS_CRAWL_RESUME !== "0") resumeCrawl(id);
@@ -151,17 +172,18 @@ async function run(id, handle) {
 
   const seen = new Set();
   const frontier = [];
-  const push = (url, depth) => {
+  // url: the normalized dedupe key; href: the address as found (fetched as such)
+  const push = (url, depth, href) => {
     const n = normalizeUrl(url);
     if (!n || seen.has(n)) return;
     seen.add(n);
-    frontier.push({ url: n, depth });
+    frontier.push({ url: n, depth, href: href && normalizeUrl(href) === n ? href : n });
   };
   if (o.urls) for (const u of o.urls) push(u, 0);
   else {
-    push(o.url, 0);
+    push(o.url, 0, o.start_href);
     if (o.depth > 0) {
-      const map = await mapSite({ url: o.url, include: o.include, exclude: o.exclude, path_prefix: o.path_prefix, limit: Math.min(o.limit * 4, 5000) });
+      const map = await mapSite({ url: o.start_href || o.url, include: o.include, exclude: o.exclude, path_prefix: o.path_prefix, limit: Math.min(o.limit * 4, 5000) });
       for (const u of map.urls) push(u.url, 1);
     }
   }
@@ -176,35 +198,53 @@ async function run(id, handle) {
   patchJob(id, { found: seen.size });
 
   let nextAt = 0;
+  // a long Crawl-delay must not keep a cancel or a shutdown waiting: sleep in short slices and stop when asked
+  const pause = async (ms) => {
+    const end = Date.now() + ms;
+    while (!handle.cancel && Date.now() < end) await sleep(Math.min(100, end - Date.now()));
+  };
   const gate = async () => {
     if (!delay) return;
     const wait = Math.max(0, nextAt - Date.now());
     nextAt = Math.max(nextAt, Date.now()) + delay;
-    if (wait) await sleep(wait);
+    if (wait) await pause(wait);
   };
   let active = 0;
+  let fetched = 0; // requests made: pages skipped without a request (already saved, robots) do not use up the budget
 
-  const process_ = async ({ url, depth }) => {
+  const process_ = async ({ url, depth, href }) => {
+    if (!sameHost(url, o.url)) { counts.done++; counts.skipped++; return record({ url, status: "offsite" }); }
     if (!robotsAllows(robots, url)) { counts.done++; counts.skipped++; return record({ url, status: "robots" }); }
     const existing = getLinkByUrl(url);
     // A page already in the library is not saved again; it is fetched only when its links are still needed.
     if (existing && depth >= o.depth) { counts.done++; counts.skipped++; return record({ url, status: "existing", title: existing.title }); }
     await gate();
     if (handle.cancel) return;
-    const r = await webGet(url, { profile: fetchProfile(), accept: "any", timeoutMs: 15_000, maxBytes: MAX_BYTES, userAgent: USER_AGENT, retries: 0 });
-    const finalUrl = r.finalUrl || url;
-    if (!r.ok) {
+    fetched++;
+    const r = await webGet(href || url, { profile: fetchProfile(), accept: "any", timeoutMs: 15_000, maxBytes: MAX_BYTES, userAgent: USER_AGENT, retries: 0 });
+    if (handle.cancel) return; // cancelled while downloading: nothing more is saved (a resume fetches it again)
+    const finalUrl = r.finalUrl || href || url;
+    // a redirect may leave the site, or land on a path robots.txt forbids
+    if (!sameHost(finalUrl, o.url)) { counts.done++; counts.skipped++; return record({ url, status: "offsite", error: `redirige a ${finalUrl}`.slice(0, 200) }, url); }
+    if (normalizeUrl(finalUrl) !== url && !robotsAllows(robots, finalUrl)) { counts.done++; counts.skipped++; return record({ url, status: "robots" }, url); }
+    const kind = kindFromResponse(finalUrl, r.contentType);
+    // PDFs and images have no text, so webGet does not call them ok; a 2xx with a body is a good download
+    const binaryOk = (kind === "pdf" || kind === "image") && r.status >= 200 && r.status < 300 && r.body?.length > 0;
+    if (!r.ok && !binaryOk) {
       counts.done++; counts.failed++;
       return record({ url, status: "failed", error: String(r.error || `HTTP ${r.status}`).slice(0, 200) }, url);
     }
-    const kind = kindFromResponse(finalUrl, r.contentType);
     let extracted = { title: "", description: "", contentText: "", byline: "", lang: "" };
-    if (kind === "pdf" || kind === "image") extracted.title = decodeURIComponent(new URL(finalUrl).pathname.split("/").filter(Boolean).pop() || finalUrl);
-    else {
+    if (kind === "pdf" || kind === "image") {
+      const last = new URL(finalUrl).pathname.split("/").filter(Boolean).pop() || "";
+      let name = last;
+      try { name = decodeURIComponent(last); } catch { name = unescape(last); } // a Latin-1 "%E9" is not valid UTF-8
+      extracted.title = name || finalUrl;
+    } else {
       extracted = extractHtml(r.text || "", finalUrl);
       if (depth < o.depth) {
         for (const l of pageLinks(r.text || "", finalUrl)) {
-          if (filter(l.url) && sameHost(l.url, o.url)) push(l.url, depth + 1);
+          if (filter(l.url) && sameHost(l.url, o.url)) push(l.url, depth + 1, l.href);
         }
         counts.found = seen.size;
       }
@@ -224,7 +264,7 @@ async function run(id, handle) {
 
   const worker = async () => {
     for (;;) {
-      if (handle.cancel || counts.saved >= o.limit || counts.done >= o.limit * 3) return;
+      if (handle.cancel || counts.saved >= o.limit || fetched >= o.limit * 3) return;
       const item = frontier.shift();
       if (!item) {
         if (active === 0) return;

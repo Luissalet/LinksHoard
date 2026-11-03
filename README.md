@@ -97,7 +97,11 @@ The add-link box has a **Save whole site** button. Type a site or a section (`ht
 
 Each page goes through the same extractor as a single saved link and becomes a normal link (source `import`) tagged `site:<host>`, `crawl-<job id>` and your extra tags. A URL already in the library is never saved again (the existing link is left untouched), so a crawl is idempotent and **Resume** only fetches what is missing; jobs left running by a restart are continued at boot (`LINKS_CRAWL_RESUME=0` only marks them interrupted). It is polite: `robots.txt` rules are honoured (disallowed pages are skipped and counted), a `Crawl-delay` forces one request at a time with that delay, otherwise requests to the host are spaced 500 ms apart with at most 2 in flight; same host only, depth (default 1 when crawling from a start URL, link hops from it) and limit (default 50, max 500) bound the job.
 
-REST: `POST /api/site/map`, `POST /api/crawls`, `GET /api/crawls`, `GET /api/crawls/:id`, `POST /api/crawls/:id/cancel`, `POST /api/crawls/:id/resume`. Jobs live in the `crawl_jobs` table.
+A redirect that leaves the site (or lands on a path `robots.txt` forbids) is skipped and reported (`offsite` / `robots`); PDFs and images are saved with their file name as title; pages already saved or skipped by robots do not use up the job's request budget (3 × limit); a cancel or shutdown takes effect at once even during a long `Crawl-delay`, a page in flight when cancelling is not saved, and **Resume** pressed while a cancel is still winding down runs the job again as soon as it stops. A clean shutdown leaves running jobs `interrupted` and they are continued at the next start. `path_prefix` is a section boundary (`/docs` does not take in `/docs-old`) and may be written with accents; the start page is fetched as typed, so `/guide/` and `/guide` resolve relative links correctly. Sitemaps: at most 40 requested (dead ones included) and only URLs of the section count toward the map's limit, so a section listed late in a big sitemap is still found.
+
+The panel also lists **Previous crawls** (status, pages saved, date, tag) with **View**, **Resume** and **Remove**: removing deletes only the job record, never the links it saved; a running job must be cancelled first.
+
+REST: `POST /api/site/map`, `POST /api/crawls`, `GET /api/crawls`, `GET /api/crawls/:id`, `POST /api/crawls/:id/cancel`, `POST /api/crawls/:id/resume`, `DELETE /api/crawls/:id` (409 while running). Jobs live in the `crawl_jobs` table.
 ## Downloads
 
 The **Descargas** page (`#/descargas`) and the `media_download` tool turn a link into files on disk. Video and audio go through [yt-dlp](https://github.com/yt-dlp/yt-dlp), photo posts and carousels that yt-dlp cannot take ("There is no video in this post") through [gallery-dl](https://github.com/mikf/gallery-dl). Both run as separate programs; the app does not bundle them.
@@ -209,6 +213,7 @@ Tools:
 | `map_site` | List the pages of a site or section (sitemaps + start-page links, include/exclude globs, path_prefix); saves nothing. |
 | `crawl_site` | Save a site or section as links in a background job (limit, depth, globs or an explicit `urls` list; skips saved URLs, honours robots.txt). |
 | `crawl_status` | Progress of site crawls; `action` cancel or resume. |
+| `crawl_delete` | Remove a finished/cancelled crawl job from the history (its saved links stay); refused while it runs. |
 | `highlights_to_cards` | Send highlights (of a link, or all not yet sent / since a date) to Hypatia as flashcards in the deck "Lecturas" (`link_id`, `url`, `since`, `deck`, `resend`); reports `status` (`ok`, `nothing_new`, `hub_down`, `hypatia_unavailable`, `hypatia_error`, `unknown_link`). |
 | `resurface` | What to read today from the saved-but-unread (`count`, default 3); the same list all day, never the same link twice in 14 days. |
 | `reading_plan` | Choose complete unread texts for `minutes`, with `words_per_minute` (default 200), `max_items` (default 5), optional `tag` / `site`; estimates only, no state changes. |

@@ -91,6 +91,13 @@ The server binds 127.0.0.1 and only answers requests whose `Host` is `localhost`
 - **Para leer hoy.** The Bandeja opens with a few links saved a while ago (3 by default, 1 to 10 in Ajustes), and `resurface {count}` answers the same list. Candidates: unread for at least 2 days (older first; favourites, highlights and topics you actually read weigh more), plus links read two weeks ago that carry highlights, for a re-read; downloads, archived and unfetched links never. The same link is not offered twice within 14 days (30 for a re-read); the day's list is stored, so it does not change until tomorrow (a link you read drops out of it). Once a day, from 08:00 local, one `digest.item` event ("Para leer hoy (3): …") goes to the hub for the family digest, only when there is something to read and only marked as sent when the hub took it. `LINKS_RESURFACE=0` or the Ajustes switch turns the daily line off.
 - **Install as an app.** `manifest.webmanifest` declares a `share_target`, so once installed on Android you can share a page from any app straight into Links Hoard.
 
+## Save a whole site or section
+
+The add-link box has a **Save whole site** button. Type a site or a section (`https://docs.python.org/3/howto/`), optional include / exclude patterns (`/3/howto/*`, `**/old/**`, `*.pdf`; `**` crosses folders, `*` stays in one) and press **Find pages**: the app lists the URLs it found in `robots.txt` sitemaps, `sitemap.xml` and sitemap indexes (`.gz` too) and the same-host links of the start page, with titles when the page links them and a mark on the ones already in your library. Pick the pages (filter, mark or unmark the visible ones), choose a maximum and extra tags, and **Save N pages** starts a background job with live progress, **Cancel** and **Resume**. By default only the folder of the typed address is mapped; tick "whole domain" for the rest of the host.
+
+Each page goes through the same extractor as a single saved link and becomes a normal link (source `import`) tagged `site:<host>`, `crawl-<job id>` and your extra tags. A URL already in the library is never saved again (the existing link is left untouched), so a crawl is idempotent and **Resume** only fetches what is missing; jobs left running by a restart are continued at boot (`LINKS_CRAWL_RESUME=0` only marks them interrupted). It is polite: `robots.txt` rules are honoured (disallowed pages are skipped and counted), a `Crawl-delay` forces one request at a time with that delay, otherwise requests to the host are spaced 500 ms apart with at most 2 in flight; same host only, depth (default 1 when crawling from a start URL, link hops from it) and limit (default 50, max 500) bound the job.
+
+REST: `POST /api/site/map`, `POST /api/crawls`, `GET /api/crawls`, `GET /api/crawls/:id`, `POST /api/crawls/:id/cancel`, `POST /api/crawls/:id/resume`. Jobs live in the `crawl_jobs` table.
 ## Downloads
 
 The **Descargas** page (`#/descargas`) and the `media_download` tool turn a link into files on disk. Video and audio go through [yt-dlp](https://github.com/yt-dlp/yt-dlp), photo posts and carousels that yt-dlp cannot take ("There is no video in this post") through [gallery-dl](https://github.com/mikf/gallery-dl). Both run as separate programs; the app does not bundle them.
@@ -199,6 +206,9 @@ Tools:
 | `watch_check` | Check one watch (or every due one) now. |
 | `watch_dismiss` | Mark an item as seen. |
 | `watch_remove` | Stop following (items and saved links stay). |
+| `map_site` | List the pages of a site or section (sitemaps + start-page links, include/exclude globs, path_prefix); saves nothing. |
+| `crawl_site` | Save a site or section as links in a background job (limit, depth, globs or an explicit `urls` list; skips saved URLs, honours robots.txt). |
+| `crawl_status` | Progress of site crawls; `action` cancel or resume. |
 | `highlights_to_cards` | Send highlights (of a link, or all not yet sent / since a date) to Hypatia as flashcards in the deck "Lecturas" (`link_id`, `url`, `since`, `deck`, `resend`); reports `status` (`ok`, `nothing_new`, `hub_down`, `hypatia_unavailable`, `hypatia_error`, `unknown_link`). |
 | `resurface` | What to read today from the saved-but-unread (`count`, default 3); the same list all day, never the same link twice in 14 days. |
 | `reading_plan` | Choose complete unread texts for `minutes`, with `words_per_minute` (default 200), `max_items` (default 5), optional `tag` / `site`; estimates only, no state changes. |

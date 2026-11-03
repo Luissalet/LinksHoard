@@ -8,6 +8,7 @@ import { stop as stopFetcher } from "./fetcher.js";
 import { stopScheduler } from "./watches.js";
 import { shutdownMedia } from "./media.js";
 import { shutdownVideo } from "./videoinsight.js";
+import { shutdownCrawls } from "./sitecrawl.js";
 import { shutdownDigest } from "./videodigest.js";
 import { shutdownSentidos } from "./sentidos.js";
 import { shutdown as shutdownSessions } from "./site-login.js";
@@ -31,6 +32,7 @@ try {
       stopScheduler();
       stopBackground();
       await shutdownSessions().catch(() => {});
+      await shutdownCrawls();
       await shutdownDigest();
       await shutdownSentidos();
       await shutdownVideo();

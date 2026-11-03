@@ -90,6 +90,13 @@ El servidor escucha en 127.0.0.1 y solo responde a peticiones cuyo `Host` sea `l
 
 - **Leer en el tiempo que tienes.** Pide a Faustus un `reading_plan` con minutos disponibles, ritmo de lectura y filtros opcionales de etiqueta o sitio. Combina textos completos guardados sin leer que quepan, indica minutos estimados y sobrantes y conserva la biblioteca y las elecciones diarias. [Planes de lectura](docs/READING_PLAN.md).
 
+## Guardar un sitio entero o una sección
+
+El cuadro de añadir enlace tiene el botón **Guardar sitio completo**. Escribe una web o una sección (`https://docs.python.org/3/howto/`), patrones opcionales de inclusión y exclusión (`/3/howto/*`, `**/old/**`, `*.pdf`; `**` cruza carpetas, `*` no) y pulsa **Buscar páginas**: la app lista las URL que encuentra en los sitemaps de `robots.txt`, `sitemap.xml` e índices de sitemaps (también `.gz`) y en los enlaces de la página inicial del mismo dominio, con título cuando la página lo enlaza y una marca en las que ya están en tu biblioteca. Marca las páginas (filtro, marcar o desmarcar las visibles), elige un máximo y etiquetas extra, y **Guardar N páginas** lanza un trabajo en segundo plano con progreso en vivo, **Cancelar** y **Reanudar**. Por defecto solo se mapea la carpeta de la dirección escrita; marca "todo el dominio" para el resto.
+
+Cada página pasa por el mismo extractor que un enlace guardado a mano y queda como enlace normal (origen `import`) con las etiquetas `site:<host>`, `crawl-<id del trabajo>` y las tuyas. Una URL que ya está en la biblioteca no se vuelve a guardar (el enlace existente no se toca), así que el rastreo es idempotente y **Reanudar** solo descarga lo que falta; los trabajos que un reinicio dejó a medias continúan al arrancar (`LINKS_CRAWL_RESUME=0` solo los marca como interrumpidos). Es educado: respeta `robots.txt` (las páginas prohibidas se omiten y se cuentan), un `Crawl-delay` fuerza una petición cada vez con esa pausa y, si no, se espacian 500 ms con 2 a la vez como mucho; solo el mismo dominio, con profundidad (1 por defecto desde una URL inicial) y límite (50 por defecto, 500 como máximo).
+
+REST: `POST /api/site/map`, `POST /api/crawls`, `GET /api/crawls`, `GET /api/crawls/:id`, `POST /api/crawls/:id/cancel`, `POST /api/crawls/:id/resume`. Los trabajos están en la tabla `crawl_jobs`.
 ## Descargas
 
 La página **Descargas** (`#/descargas`) y la herramienta `media_download` convierten un enlace en archivos de tu disco. El vídeo y el audio pasan por [yt-dlp](https://github.com/yt-dlp/yt-dlp); las publicaciones de fotos y los carruseles que yt-dlp no puede coger («There is no video in this post») por [gallery-dl](https://github.com/mikf/gallery-dl). Son programas aparte: la aplicación no los incluye.
@@ -175,6 +182,9 @@ Herramientas:
 | `watch_check` | Comprobar una vigilancia (o todas las pendientes) ahora. |
 | `watch_dismiss` | Marcar una novedad como vista. |
 | `watch_remove` | Dejar de seguir (las novedades y los enlaces guardados se quedan). |
+| `map_site` | Lista las páginas de una web o sección (sitemaps + enlaces de la página inicial, patrones include/exclude, path_prefix); no guarda nada. |
+| `crawl_site` | Guarda una web o sección como enlaces en un trabajo en segundo plano (limit, depth, patrones o lista `urls`; omite lo ya guardado y respeta robots.txt). |
+| `crawl_status` | Progreso de los rastreos; `action` cancel o resume. |
 | `highlights_to_cards` | Enviar subrayados (de un enlace, o todos los no enviados / desde una fecha) a Hypatia como tarjetas en el mazo «Lecturas» (`link_id`, `url`, `since`, `deck`, `resend`); informa de `status` (`ok`, `nothing_new`, `hub_down`, `hypatia_unavailable`, `hypatia_error`, `unknown_link`). |
 | `resurface` | Qué leer hoy entre lo guardado sin leer (`count`, 3 por defecto); la misma lista todo el día, nunca el mismo enlace dos veces en 14 días. |
 | `reading_plan` | Textos completos sin leer para `minutes`, con `words_per_minute` (200 por defecto), `max_items` (5), filtros opcionales `tag` / `site`; estimaciones sin cambiar estado. |

@@ -2,6 +2,8 @@
 // errors bubble to the shared error handler in app.js as { error }.
 import * as links from "./links.js";
 import * as highlights from "./highlights.js";
+import { mapSite } from "./sitemap.js";
+import { mapInput, startCrawl, getCrawl, listCrawls, cancelCrawl, resumeCrawl } from "./sitecrawl.js";
 import { runImport } from "./imports.js";
 import { enqueueFetch } from "./fetcher.js";
 import { renderSharePage } from "./share.js";
@@ -106,6 +108,27 @@ export function installRoutes(app, { version, dataDirConfigured }) {
     const pending = links.markFetchPending(link.id);
     enqueueFetch(link.id, link.url);
     res.json(pending);
+  });
+
+  // Save a whole site or section: map (discover URLs) and crawl (background job)
+  app.post("/api/site/map", async (req, res, next) => {
+    try { res.json(await mapSite(mapInput.parse(req.body || {}))); } catch (e) { next(e); }
+  });
+  app.get("/api/crawls", (req, res) => res.json({ crawls: listCrawls() }));
+  app.post("/api/crawls", (req, res, next) => {
+    try { res.status(201).json(startCrawl(req.body || {})); } catch (e) { next(e); }
+  });
+  app.get("/api/crawls/:id", (req, res) => {
+    const job = getCrawl(req.params.id, { results: true });
+    return job ? res.json(job) : notFound(res);
+  });
+  app.post("/api/crawls/:id/cancel", (req, res) => {
+    const job = cancelCrawl(req.params.id);
+    return job ? res.json(job) : notFound(res);
+  });
+  app.post("/api/crawls/:id/resume", (req, res) => {
+    const job = resumeCrawl(req.params.id);
+    return job ? res.json(job) : notFound(res);
   });
 
   // Highlights

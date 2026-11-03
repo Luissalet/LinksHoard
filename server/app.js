@@ -15,6 +15,7 @@ import { initMedia } from "./media.js";
 import { initVideoInsight } from "./videoinsight.js";
 import { installVideoRoutes } from "./video-routes.js";
 import { initVideoDigest } from "./videodigest.js";
+import { initCrawls } from "./sitecrawl.js";
 import { installDigestRoutes } from "./digest-routes.js";
 import { installSentidosRoutes } from "./sentidos-routes.js";
 import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
@@ -43,6 +44,8 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   initVideoInsight();
   // Video digest: digests left unfinished by the last run go back to the queue.
   initVideoDigest();
+  // Site crawls left running by the last run are continued (LINKS_CRAWL_RESUME=0 only marks them interrupted).
+  initCrawls();
 
   const app = express();
   app.disable("x-powered-by");

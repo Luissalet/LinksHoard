@@ -248,6 +248,27 @@ const MIGRATIONS = [
     detail TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (link_id, idx)
   );
+  `,
+  // site crawls: "save a whole site or section" jobs (see sitecrawl.js)
+  `
+  CREATE TABLE crawl_jobs (
+    id TEXT PRIMARY KEY,
+    start_url TEXT NOT NULL,
+    host TEXT NOT NULL DEFAULT '',
+    options TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'queued',
+    found INTEGER NOT NULL DEFAULT 0,
+    done INTEGER NOT NULL DEFAULT 0,
+    saved INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    current TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    results TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT NULL
+  );
   `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

@@ -40,6 +40,14 @@ export const api = {
       return data;
     },
   },
+  site: {
+    map: (data) => request("POST", "/api/site/map", data),
+    crawl: (data) => request("POST", "/api/crawls", data),
+    crawls: () => request("GET", "/api/crawls"),
+    crawlGet: (id) => request("GET", `/api/crawls/${id}`),
+    crawlCancel: (id) => request("POST", `/api/crawls/${id}/cancel`),
+    crawlResume: (id) => request("POST", `/api/crawls/${id}/resume`),
+  },
   highlights: {
     list: (linkId) => request("GET", `/api/links/${linkId}/highlights`),
     create: (linkId, data) => request("POST", `/api/links/${linkId}/highlights`, data),

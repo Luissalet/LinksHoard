@@ -20,6 +20,8 @@ import { articleSource } from "./article-source.js";
 import { askLink } from "./article-questions.js";
 import * as sounds from "./sentidos-tools.js";
 import * as sentidos from "./sentidos.js";
+import { mapSite } from "./sitemap.js";
+import { mapInput, crawlInput, startCrawl, getCrawl, listCrawls, cancelCrawl, resumeCrawl } from "./sitecrawl.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
 Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
@@ -38,6 +40,7 @@ A finished download also lists its files in deliverables: an assistant that can 
 When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed. A public YouTube video downloads without an account (the app retries with alternative YouTube players when YouTube asks for a sign-in). When a download fails because the site wants an account, the result carries login: { site, label }: offer site_login, which opens a browser window on the computer where Links runs so the user signs in there (never ask for or type the password yourself); once site_sessions shows that site signed in, call media_retry. site_logout forgets a site's session.
 For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
 To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).
+To save a whole documentation site or a section of a website, call map_site first (shows the pages it would save, without saving), then crawl_site with the same filters; it runs in the background, so follow it with crawl_status and report found/saved/skipped/failed plainly. Pages already in the library are skipped, never duplicated.
 Sentidos is the listening engine (local CLAP + AudioSet, no cloud): audio_describe says what a file, a saved link or a URL sounds like, audio_match checks it against a description, audio_find locates a sound by description (without a source it searches the soundtracks of the digests), audio_timeline gives music, effects and ambience by sections, audio_measure the loudness and levels, audio_realness whether it was recorded or synthesized, audio_sheet a PNG of the soundtrack. Every label is an estimate with a z-score: report the verdict (strong, plausible, weak, no match) and never present a weak or unvalidated reading as fact; speech is the transcript's job, not Sentidos'. The first call loads the models (about a minute); audio_status shows whether they are installed and sets them up. A video digest includes a "sound" layer when the engine is ready.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
@@ -658,6 +661,25 @@ export const TOOLS = [
     "Measure an audio file — volumen, LUFS, picos, ruido, brillo\nNumbers without models (fast): integrated and short-term loudness, true peak, loudness range, noise floor, clipping, stereo width and correlation, brightness, bandwidth, attack, onsets per second. Source: path, id or url.\nSinónimos: cuánto volumen tiene, mide el audio, nivel de ruido, está saturado, picos del audio, loudness",
     z.object({ ...SOUND_SRC, ...SOUND_SPAN, music: z.boolean().default(false).describe("Also tempo and beats"), with_data: z.boolean().default(false) }), RO,
     (a) => sounds.runTool("measure", a, { withData: a.with_data })),
+
+  tool("map_site",
+    "List the pages of a website or section — mapear sitio, URLs de una web\nFinds URLs from robots.txt sitemaps, sitemap.xml (index and .gz too) and the start page's same-host links; include/exclude globs, path_prefix (default: the start URL's folder, \"/\" = whole site). Returns urls with title when known and saved (already in the library). Saves nothing; follow with crawl_site.\nSinónimos: mapa del sitio, sitemap, listar páginas de una web, qué páginas tiene este sitio, descubrir URLs",
+    mapInput, { ...RO, openWorldHint: true },
+    (a) => mapSite(a)),
+
+  tool("crawl_site",
+    "Save a whole website or section as links — guardar un sitio entero\nStarts a background crawl (returns a job id at once): pages from sitemap/links, same host only, limit (default 50), depth, include/exclude, path_prefix; or an explicit urls list. Each page is extracted and saved as a normal link tagged site:<host> and crawl-<id>; saved URLs are skipped; robots.txt and Crawl-delay honoured. Poll crawl_status.\nSinónimos: guardar toda la documentación, descargar el sitio, rastrear web, copiar una web, guardar sección",
+    crawlInput, { openWorldHint: true },
+    (a) => startCrawl(a)),
+
+  tool("crawl_status",
+    "Progress, cancel or resume of site crawls — estado del rastreo\nWith id: job progress (found/done/saved/skipped/failed, current page, per-page results). Without id: the recent jobs. action cancel stops it; resume reruns an interrupted/cancelled one, fetching only what is not saved yet.\nSinónimos: progreso del rastreo, cancelar rastreo, reanudar guardado del sitio, cómo va el crawl",
+    z.object({ id: z.string().optional(), action: z.enum(["status", "cancel", "resume"]).default("status") }), { idempotentHint: true },
+    (a) => {
+      if (!a.id) return { crawls: listCrawls() };
+      const job = a.action === "cancel" ? cancelCrawl(a.id) : a.action === "resume" ? resumeCrawl(a.id) : getCrawl(a.id, { results: true });
+      return job || fail(`No existe un rastreo con id "${a.id}".`);
+    }),
 
   tool("audio_realness",
     "Real recording or synthesized? — ¿sonido real o generado?\nEstimates per 4 s window and overall whether the audio was recorded or pro-produced (p_real) or leans synthesized, with its weak calibration stated. A hint to check, not a proof; it misses code-made layers under a louder real mix.\nSinónimos: es real el audio, audio generado por IA, sonido sintetizado, grabación o sintético, detecta audio falso",

@@ -47,6 +47,7 @@ export const api = {
     crawlGet: (id) => request("GET", `/api/crawls/${id}`),
     crawlCancel: (id) => request("POST", `/api/crawls/${id}/cancel`),
     crawlResume: (id) => request("POST", `/api/crawls/${id}/resume`),
+    crawlDelete: (id) => request("DELETE", `/api/crawls/${id}`),
   },
   highlights: {
     list: (linkId) => request("GET", `/api/links/${linkId}/highlights`),

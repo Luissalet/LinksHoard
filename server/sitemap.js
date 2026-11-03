@@ -11,6 +11,7 @@ import { getLinkByUrl } from "./links.js";
 export const ROBOTS_AGENT = "LinksHoard";
 const MAX_SITEMAPS = 25;
 const MAX_SITEMAP_DEPTH = 3;
+const MAX_SITEMAP_FETCHES = 40;
 const SKIP_EXT = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|css|js|mjs|json|xml|zip|gz|tgz|tar|7z|rar|mp4|webm|mp3|wav|ogg|woff2?|ttf|otf|eot|exe|dmg|msi|iso|apk)$/i;
 
 const hostKey = (host) => String(host || "").toLowerCase().replace(/^www\./, "");
@@ -35,12 +36,15 @@ export function globToRegex(glob) {
 export function makeFilter({ include = [], exclude = [], path_prefix = "" } = {}) {
   const inc = include.filter(Boolean).map(globToRegex);
   const exc = exclude.filter(Boolean).map(globToRegex);
-  const prefix = path_prefix ? (path_prefix.startsWith("/") ? path_prefix : "/" + path_prefix) : "";
+  let prefix = path_prefix ? (path_prefix.startsWith("/") ? path_prefix : "/" + path_prefix) : "";
+  // compare in the encoded form URL.pathname uses ("/año/" is "/a%C3%B1o/"); "/docs" is a section, so it does not match "/docs-old"
+  if (prefix) { try { prefix = new URL("http://prefix.invalid" + prefix).pathname; } catch { /* keep as written */ } }
+  const inSection = (p) => !prefix || (prefix.endsWith("/") ? p.startsWith(prefix) : p === prefix || p.startsWith(prefix + "/"));
   const hit = (list, u) => list.some((g) => g.re.test(g.whole ? u.href : u.pathname + u.search));
   return (url) => {
     let u;
     try { u = new URL(url); } catch { return false; }
-    if (prefix && !u.pathname.startsWith(prefix)) return false;
+    if (!inSection(u.pathname)) return false;
     if (inc.length && !hit(inc, u)) return false;
     if (exc.length && hit(exc, u)) return false;
     return true;
@@ -104,18 +108,22 @@ export function pageLinks(html, baseUrl) {
     const url = normalizeUrl(abs);
     if (!url || !sameHost(url, baseUrl) || SKIP_EXT.test(new URL(url).pathname)) continue;
     const title = (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200);
-    if (!out.has(url) || (!out.get(url).title && title)) out.set(url, { url, title });
+    const linked = abs.split("#")[0]; // the address as linked (normalizing drops a trailing slash the server may need)
+    if (!out.has(url)) out.set(url, { url, title, href: linked });
+    else if (!out.get(url).title && title) out.get(url).title = title;
   }
   return [...out.values()];
 }
 
-/** Collect URLs from sitemaps (index files followed up to a depth, at most MAX_SITEMAPS fetched). */
-async function readSitemaps(seeds, { host, wanted }) {
+/** Collect the URLs of the section from sitemaps (index files followed up to a depth; at most MAX_SITEMAPS read and
+ * MAX_SITEMAP_FETCHES requested, dead ones included). Only URLs that pass `filter` are kept and counted, so a section listed
+ * after thousands of other entries is still reached. */
+async function readSitemaps(seeds, { host, wanted, filter = () => true }) {
   const urls = [];
   const used = [];
   const seen = new Set();
   const queue = seeds.map((u) => ({ url: u, depth: 0 }));
-  while (queue.length && used.length < MAX_SITEMAPS && urls.length < wanted * 4) {
+  while (queue.length && used.length < MAX_SITEMAPS && seen.size < MAX_SITEMAP_FETCHES && urls.length < wanted * 4) {
     const { url, depth } = queue.shift();
     if (seen.has(url)) continue;
     seen.add(url);
@@ -128,7 +136,10 @@ async function readSitemaps(seeds, { host, wanted }) {
     if (parsed.index) {
       if (depth < MAX_SITEMAP_DEPTH) for (const loc of parsed.locs) queue.push({ url: loc, depth: depth + 1 });
     } else {
-      for (const loc of parsed.locs) if (sameHost(loc, host)) urls.push(loc);
+      for (const loc of parsed.locs) {
+        const n = normalizeUrl(loc);
+        if (n && sameHost(n, host) && filter(n)) urls.push(loc);
+      }
     }
   }
   return { urls, used };
@@ -164,14 +175,16 @@ export async function mapSite(opts = {}) {
   let sitemapsUsed = [];
   if (opts.sitemaps !== false) {
     const seeds = [...new Set([...robots.sitemaps, `${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`])];
-    const read = await readSitemaps(seeds, { host: start, wanted: limit });
+    const read = await readSitemaps(seeds, { host: start, wanted: limit, filter });
     sitemapsUsed = read.used;
     for (const u of read.urls) add(u, "sitemap");
   }
   if (opts.links !== false) {
-    const page = await getBytes(start, { maxBytes: 3 * 1024 * 1024, timeoutMs: 15_000 }).catch(() => null);
+    // fetched as typed: "/guide/" and "/guide" may both answer, and relative links resolve differently against each
+    const fetchUrl = sameHost(typed, start) ? typed.split("#")[0] : start;
+    const page = await getBytes(fetchUrl, { maxBytes: 3 * 1024 * 1024, timeoutMs: 15_000 }).catch(() => null);
     if (page?.ok && page.text && /html|xml|^$/i.test(page.contentType || "")) {
-      for (const l of pageLinks(page.text, page.finalUrl || start)) add(l.url, "link", l.title);
+      for (const l of pageLinks(page.text, page.finalUrl || fetchUrl)) add(l.url, "link", l.title);
     }
   }
   add(start, "start");

@@ -35,7 +35,7 @@ Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was
 delete_link is irreversible: confirm with the user before calling it.
 highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "Lecturas") through the hub; report the status it returns, and say plainly when the hub or Hypatia is not there. resurface answers "what should I read today": quote the title, site and reason of each item and open nothing without being asked.
 reading_plan selects complete unread saved texts for the user's available minutes and assumed reading speed. Report estimates, not guaranteed duration. It never fetches pages, marks links read or changes the daily resurfacing list; use read_link before summarizing any selected text.
-Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
+Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes), or the entries of a list page without a feed (kind list, watch_list_preview first); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
 A finished download also lists its files in deliverables: an assistant that can hand files to the user (Faustus turns them into download links that work on the desktop and on the phone) should give the user those links; the file stays in the downloads folder and the link in the library either way.
 When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed. A public YouTube video downloads without an account (the app retries with alternative YouTube players when YouTube asks for a sign-in). When a download fails because the site wants an account, the result carries login: { site, label }: offer site_login, which opens a browser window on the computer where Links runs so the user signs in there (never ask for or type the password yourself); once site_sessions shows that site signed in, call media_retry. site_logout forgets a site's session.
 For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
@@ -307,21 +307,33 @@ export const TOOLS = [
     }),
 
   tool("watch_add",
-    "Follow a feed, a GitHub repository or a page for new things.\nFollow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinónimos: sigue este feed, avísame cuando, vigilar página, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
+    "Follow a feed, a GitHub repository or a page for new things.\nFollow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). kind list follows the repeated entries of a page without a feed (offers, products, posts) one by one, across `pages` next pages, stopping at the first page with nothing new; its selector is detected once (see watch_list_preview). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinónimos: sigue este feed, avísame cuando, vigilar página, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
     z.object({
       url: z.string().trim().min(1).describe("Feed, GitHub repository or page URL"),
-      kind: z.enum(["auto", "feed", "github", "page"]).default("auto"),
+      kind: z.enum(["auto", "feed", "github", "page", "list"]).default("auto").describe("list: a page without a feed whose repeated entries (offers, products, posts) become items one by one"),
       name: z.string().trim().max(200).default(""),
       every_min: z.number().int().min(5).max(10080).default(60),
       tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
       auto_save: z.boolean().default(true),
       github: z.enum(["releases", "tags", "commits"]).default("releases"),
+      selector: z.string().trim().max(300).default("").describe("list only: CSS selector of the entries; empty = detected once and stored"),
+      pages: z.number().int().min(1).max(10).default(3).describe("list only: pages to follow (rel=next or a Siguiente/Next link); stops at the first page with nothing new"),
     }), { idempotentHint: true },
     async (a) => {
       const out = await watches.addWatch(a);
       return { ...out.watch, existing: out.existing, baseline_items: out.first_check ? out.first_check.watch.item_count : undefined,
                first_check_error: out.first_check && !out.first_check.ok ? out.first_check.error : undefined };
     }),
+
+  tool("watch_list_preview",
+    "Preview what a list watch would read on a page, without saving.\nFor a page without a feed (job offers, products, posts, listings): finds the repeated entries (or uses the CSS selector you give), follows up to `pages` next pages and returns the entries (title, url, summary), the selector it would store and the pages read. Use it before watch_add with kind list to check the entries are the right ones.\nSinónimos: probar lista, qué leería, vista previa vigía, raspar listado, ofertas de una página",
+    z.object({
+      url: z.string().trim().min(1).describe("The page that lists the entries"),
+      selector: z.string().trim().max(300).default("").describe("CSS selector of the entries; empty = detect"),
+      pages: z.number().int().min(1).max(10).default(1),
+      limit: z.number().int().min(1).max(100).default(20),
+    }), RO,
+    (a) => watches.previewList(a)),
 
   tool("watch_list",
     "List the watches with last check, error and item count.\nList the watches (feeds, GitHub repositories, pages) with kind, interval, last check, last error and item count.\nSinónimos: qué sigo, mis feeds, vigilancias, suscripciones, qué estoy siguiendo",

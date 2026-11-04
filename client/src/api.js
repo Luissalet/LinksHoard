@@ -92,6 +92,7 @@ export const api = {
     remove: (id) => request("DELETE", `/api/watches/${id}`),
     check: (id) => request("POST", `/api/watches/${id}/check`),
     checkDue: () => request("POST", "/api/watches/check"),
+    listPreview: (data) => request("POST", "/api/watches/list-preview", data),
     items: (filter) => request("GET", `/api/watch-items${qs(filter)}`),
     dismiss: (id, dismissed = true) => request("POST", `/api/watch-items/${id}/${dismissed ? "dismiss" : "undismiss"}`),
   },

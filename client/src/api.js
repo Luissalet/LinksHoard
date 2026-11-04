@@ -49,6 +49,9 @@ export const api = {
     crawlResume: (id) => request("POST", `/api/crawls/${id}/resume`),
     crawlDelete: (id) => request("DELETE", `/api/crawls/${id}`),
   },
+  posts: {
+    read: (url) => request("POST", "/api/posts/read", { url }),
+  },
   highlights: {
     list: (linkId) => request("GET", `/api/links/${linkId}/highlights`),
     create: (linkId, data) => request("POST", `/api/links/${linkId}/highlights`, data),

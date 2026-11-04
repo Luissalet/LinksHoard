@@ -142,7 +142,7 @@ REST routes (same local guard as the rest of `/api`):
 | `GET /api/sessions` | The sites with a sign-in button, whether each is signed in, the browser found and the open login window (no cookie values). |
 | `PUT /api/sessions/settings` | `{ browser }`: the browser for the sign-in window (`auto` = the default one). |
 | `POST /api/sessions/:site/login` · `POST /api/sessions/finish` · `POST /api/sessions/cancel` · `DELETE /api/sessions/:site` | Open the sign-in window / save now and close it / close it / sign the app out of a site. |
-| `POST /api/posts/read` | `{ url }`: a social post (X, Instagram, Threads, TikTok, Reddit, any page) as text: author, text, description, link card and the links inside (short links resolved). Read only. |
+| `POST /api/posts/read` | `{ url }`: a social post (X, Instagram, Threads, TikTok, Reddit, any page) as text: author, text, description, link card and the links inside (short links resolved). Read only. In the app: **Leer post** next to **Guardar** shows the post and offers to save it. |
 | `POST /api/highlights/:id/to-cards` | `{ deck? }`: send one highlight to Hypatia (answers 200 with `{ok, status, deck, sent, skipped}`). |
 | `POST /api/links/:id/cards` · `POST /api/cards/from-highlights` | `{ deck?, resend? }` for one link / `{ link_id?, since?, deck?, resend? }` for everything that has not gone yet. |
 | `GET /api/resurface` | `?count=`: today's "Para leer hoy" list, each item with its `reason`. |

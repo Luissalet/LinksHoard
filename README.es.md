@@ -180,7 +180,8 @@ Herramientas:
 | `link_digest` | Lo guardado desde una fecha, agrupado por sitio. |
 | `refetch_link` | Volver a descargar y extraer. |
 | `delete_link` | Borrar permanentemente (destructivo; confirmar antes). |
-| `watch_add` | Seguir un feed, un repositorio de GitHub o una página (tipo autodetectado; intervalo, etiquetas, auto_save). |
+| `watch_add` | Seguir un feed, un repositorio de GitHub o una página (tipo autodetectado; intervalo, etiquetas, auto_save), o las entradas de una página de lista sin RSS (`kind: list`, `selector`, `pages`: se detecta la lista una vez, se sigue la paginación y se para en la primera página sin nada nuevo). |
+| `watch_list_preview` | Qué leería un vigía de lista en una página: entradas, selector que se guardaría y páginas recorridas, sin guardar nada (botón **Probar** en Vigía, `POST /api/watches/list-preview`). |
 | `watch_list` | Las vigilancias con su última comprobación, último error y novedades. |
 | `watch_items` | Lo que han traído las vigilancias (no vistas primero; desde una fecha; por vigilancia). |
 | `watch_check` | Comprobar una vigilancia (o todas las pendientes) ahora. |

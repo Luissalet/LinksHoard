@@ -16,8 +16,11 @@ import { isValidUrl } from "./url.js";
 import { fetchForWatch } from "./net-policy.js";
 import { parseFeed, discoverFeeds, githubFeed, checkPage, checkFeed, htmlToText } from "./hoard-commons/web.js";
 import * as family from "./hoard-link.js";
+import { walkList } from "./list-watch.js";
 
-const KINDS = ["feed", "github", "page"];
+const KINDS = ["feed", "github", "page", "list"];
+export const MAX_LIST_PAGES = 10;
+const NEW_PER_CHECK = 40;
 export const DEFAULT_EVERY_MIN = 60;
 
 // Feeds (RSS 2.0, RSS 1.0 and Atom), GitHub repository feeds, feed discovery, the page comparison (volatile lines such as clocks and
@@ -44,6 +47,7 @@ const rowToWatch = (r) => r && ({
   id: r.id, kind: r.kind, url: r.url, source_url: r.source_url, name: r.name, every_min: r.every_min,
   tags: JSON.parse(r.tags || "[]"), auto_save: !!r.auto_save, enabled: !!r.enabled, created_at: r.created_at,
   last_check_at: r.last_check_at, last_ok_at: r.last_ok_at, last_error: r.last_error, item_count: r.item_count,
+  ...(r.kind === "list" ? { list_selector: r.list_selector || "", list_pages: r.list_pages || 3 } : {}),
 });
 const rowToItem = (r) => r && ({
   id: r.id, watch_id: r.watch_id, guid: r.guid, url: r.url, title: r.title, summary: r.summary, published_at: r.published_at,
@@ -58,6 +62,8 @@ const addInput = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
   auto_save: z.boolean().default(true),
   github: z.enum(["releases", "tags", "commits"]).default("releases"),
+  selector: z.string().trim().max(300).default(""),
+  pages: z.number().int().min(1).max(MAX_LIST_PAGES).default(3),
 });
 
 export function listWatches() {
@@ -75,8 +81,9 @@ const fetchFailure = (r) => new Error(r.error || (r.status ? `HTTP ${r.status}` 
 
 /** Fetch a URL for a watch; resolves the answer or throws the reason. */
 async function fetchOrThrow(url, options) {
-  const got = await fetchForWatch(url, options);
-  if (!got.ok) throw fetchFailure(got);
+  // a refusal (robots.txt, a blocked address) is the person's answer, not a crash of the app: 400 with the reason
+  const got = await fetchForWatch(url, options).catch((error) => ({ ok: false, error: error.message || String(error) }));
+  if (!got.ok) throw Object.assign(fetchFailure(got), { status: 400 });
   return { ...got, url: got.final_url || url };
 }
 
@@ -89,6 +96,10 @@ export async function resolveKind(url, kind = "auto", github = "releases") {
   }
   if (kind === "feed") return { kind: "feed", url, name: "" };
   if (kind === "page") return { kind: "page", url, name: "" };
+  if (kind === "list") {
+    const got = await fetchOrThrow(url);
+    return { kind: "list", url: got.url, name: "", prefetched: got };
+  }
   // auto: fetch once and look
   const got = await fetchOrThrow(url);
   const feed = readFeed(got.text, got.url);
@@ -110,14 +121,39 @@ export async function addWatch(input) {
   const resolved = await resolveKind(data.url, data.kind, data.github);
   const dup = findWatchByUrl(resolved.url);
   if (dup) return { watch: dup, existing: true };
+  let selector = "";
+  if (resolved.kind === "list") {
+    // the list is found once, here: its selector is what every later check reads
+    const walk = await walkList(resolved.prefetched, { selector: data.selector, pages: 1, fetchPage: (u) => fetchForWatch(u) });
+    if (walk.error) throw Object.assign(new Error(walk.error), { status: 400 });
+    selector = walk.selector;
+    resolved.name = resolved.name || walk.title;
+  }
   const id = uid();
   db().prepare(
-    `INSERT INTO watches (id, kind, url, source_url, name, every_min, tags, auto_save, enabled, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-  ).run(id, resolved.kind, resolved.url, data.url, data.name || resolved.name || "", data.every_min, JSON.stringify(data.tags), data.auto_save ? 1 : 0, now());
+    `INSERT INTO watches (id, kind, url, source_url, name, every_min, tags, auto_save, enabled, created_at, list_selector, list_pages)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+  ).run(id, resolved.kind, resolved.url, data.url, data.name || resolved.name || "", data.every_min, JSON.stringify(data.tags), data.auto_save ? 1 : 0, now(), selector, data.pages);
   // First check right away: the current entries are the baseline (not "new").
   const check = await checkWatch(id, { baseline: true, prefetched: resolved.prefetched });
   return { watch: getWatch(id), existing: false, first_check: check };
+}
+
+/** What a list watch would read on a page, without saving anything: the entries found, the selector and the pages followed. */
+export async function previewList(input) {
+  const p = z.object({
+    url: z.string().trim().min(1), selector: z.string().trim().max(300).default(""),
+    pages: z.number().int().min(1).max(MAX_LIST_PAGES).default(1), limit: z.number().int().min(1).max(100).default(20),
+  }).parse(input || {});
+  if (!isValidUrl(p.url)) throw Object.assign(new Error("URL no válida."), { status: 400 });
+  const got = await fetchOrThrow(p.url);
+  const walk = await walkList(got, { selector: p.selector, pages: p.pages, fetchPage: (u) => fetchForWatch(u) });
+  if (walk.error && !walk.items.length) throw Object.assign(new Error(walk.error), { status: 400 });
+  return {
+    url: got.url, title: walk.title, selector: walk.selector, detected: walk.detected, count: walk.items.length,
+    pages: walk.pages.map(({ url, count }) => ({ url, count })), error: walk.error || undefined,
+    items: walk.items.slice(0, p.limit).map(({ url, title, summary }) => ({ url, title, summary: summary.slice(0, 200) })),
+  };
 }
 
 export function updateWatch(id, patch) {
@@ -126,10 +162,16 @@ export function updateWatch(id, patch) {
   const p = z.object({
     name: z.string().trim().max(200).optional(), every_min: z.number().int().min(5).max(7 * 24 * 60).optional(),
     tags: z.array(z.string().trim().min(1).max(40)).max(50).optional(), auto_save: z.boolean().optional(), enabled: z.boolean().optional(),
+    selector: z.string().trim().max(300).optional(), pages: z.number().int().min(1).max(MAX_LIST_PAGES).optional(),
   }).parse(patch);
   db().prepare("UPDATE watches SET name = ?, every_min = ?, tags = ?, auto_save = ?, enabled = ? WHERE id = ?").run(
     p.name ?? w.name, p.every_min ?? w.every_min, JSON.stringify(p.tags ?? w.tags), (p.auto_save ?? w.auto_save) ? 1 : 0, (p.enabled ?? w.enabled) ? 1 : 0, id,
   );
+  if (w.kind === "list" && (p.selector !== undefined || p.pages !== undefined)) {
+    // a new selector reads other entries: the next check starts from a fresh fingerprint (known items stay known)
+    db().prepare("UPDATE watches SET list_selector = ?, list_pages = ?, last_hash = CASE WHEN ? THEN '' ELSE last_hash END WHERE id = ?")
+      .run(p.selector ?? w.list_selector, p.pages ?? w.list_pages, p.selector !== undefined && p.selector !== w.list_selector ? 1 : 0, id);
+  }
   return getWatch(id);
 }
 
@@ -194,9 +236,34 @@ export async function checkWatch(id, { baseline = false, prefetched = null } = {
     .catch((error) => ({ ok: false, error: error.message || String(error) }));
   const newItems = [];
   let outcome = null;
+  // a list walks its pages before the transaction (fetching is async); the walk stops at the first page with nothing new
+  let walk = null;
+  if (watch.kind === "list" && got.ok && !got.not_modified) {
+    const known = new Set(db().prepare("SELECT guid FROM watch_items WHERE watch_id = ?").all(id).map((r) => r.guid));
+    walk = await walkList(got, { selector: watch.list_selector, pages: watch.list_pages, known: baseline ? null : known,
+      fetchPage: (u) => fetchForWatch(u) });
+  }
   try {
     transaction(() => {
-      if (watch.kind === "page") {
+      if (watch.kind === "list") {
+        if (!got.ok) { outcome = fail(got.error || (got.status ? `HTTP ${got.status}` : "No hay respuesta.")); return; }
+        if (!got.not_modified) {
+          if (walk.error && !walk.items.length) { outcome = fail(walk.error); return; }
+          // the fingerprint of the first page (last_hash) says at a glance whether the list moved; the walk already stopped at the
+          // first page without anything unknown, so what is left to do is keep the unknown entries
+          const known = new Set(db().prepare("SELECT guid FROM watch_items WHERE watch_id = ?").all(id).map((r) => r.guid));
+          const fresh = [];
+          for (const item of walk.items) if (!known.has(item.guid)) { known.add(item.guid); fresh.push(item); }
+          // pages list newest first: record the oldest first so the newest arrives last; at most NEW_PER_CHECK new per check
+          const take = baseline ? fresh : fresh.slice(0, NEW_PER_CHECK);
+          for (const item of take.slice().reverse()) recordItem(watch, { ...item, published_at: null }, { baseline, links: newItems });
+          if (!watch.name && walk.title) db().prepare("UPDATE watches SET name = ? WHERE id = ?").run(walk.title, id);
+          db().prepare("UPDATE watches SET last_hash = ?, list_selector = CASE WHEN list_selector = '' THEN ? ELSE list_selector END, check_engine = 1 WHERE id = ?")
+            .run(walk.hash || "", walk.selector || "", id);
+        }
+        db().prepare("UPDATE watches SET last_etag = ?, last_modified = ? WHERE id = ?")
+          .run(got.not_modified ? state.last_etag || "" : got.etag || "", got.not_modified ? state.last_modified || "" : got.last_modified || "", id);
+      } else if (watch.kind === "page") {
         const prev = sameEngine ? { hash: state.last_hash, text: state.last_text, etag: state.last_etag, lastModified: state.last_modified } : null;
         const [finding, next] = checkPage(got, prev);
         if (next.error) { outcome = fail(next.error); return; }

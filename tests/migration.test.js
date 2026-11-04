@@ -17,8 +17,10 @@ test("migration 7 re-keys the saved links with the shared rules and leaves a key
     insert.run("c", "https://example.com/page", "https://example.com/page/", "example.com", "2026-01-03T00:00:00Z");
     insert.run("d", "https://example.com/older-key", "https://example.com/page/?utm_campaign=y", "example.com", "2026-01-04T00:00:00Z");
     db.prepare("INSERT INTO links (id, url, url_original, site, saved_at) VALUES ('e', 'https://other.org', 'https://other.org', 'other.org', '2026-01-05T00:00:00Z')").run();
-    // go back to before migration 7 (and take migrations 8 to 11, the video, digest, sound and site-crawl tables, away with it so they run again too)
+    // go back to before migration 7 (and take migrations 8 to 12, the video, digest, sound and site-crawl tables and the list-watch
+    // columns, away with it so they run again too)
     db.exec("ALTER TABLE watches DROP COLUMN check_engine");
+    db.exec("ALTER TABLE watches DROP COLUMN list_selector; ALTER TABLE watches DROP COLUMN list_pages");
     db.exec("DROP TABLE link_frames; DROP TABLE link_segments; DROP TABLE link_media; DROP TABLE IF EXISTS link_segments_fts");
     db.exec("DROP TABLE link_visual; DROP TABLE link_digest; DROP TABLE IF EXISTS link_visual_fts");
     db.exec("DROP TABLE link_sounds; DROP TABLE IF EXISTS link_sounds_fts; DROP TABLE crawl_jobs");
@@ -35,7 +37,8 @@ test("migration 7 re-keys the saved links with the shared rules and leaves a key
     assert.equal(rows.d.url, "https://example.com/older-key");
     assert.equal(rows.e.url, "https://other.org");
     assert.ok(database.db().prepare("SELECT check_engine FROM watches").all() !== null, "the engine column is back");
-    assert.equal(database.db().prepare("SELECT MAX(version) AS v FROM schema_version").get().v, 11);
+    assert.ok(database.db().prepare("SELECT list_selector, list_pages FROM watches").all() !== null, "the list-watch columns are back");
+    assert.equal(database.db().prepare("SELECT MAX(version) AS v FROM schema_version").get().v, 12);
     database.close();
   } finally {
     try { database.close(); } catch { /* closed */ }

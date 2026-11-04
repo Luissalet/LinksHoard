@@ -27,6 +27,7 @@
     "feeds",
     "github-releases",
     "page-changes",
+    "list-watches",
     "event-bus",
     "media-download",
     "video-download",

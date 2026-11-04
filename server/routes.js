@@ -49,6 +49,9 @@ export function installRoutes(app, { version, dataDirConfigured }) {
   app.post("/api/watches/:id/check", async (req, res, next) => {
     try { res.json(await watches.checkWatch(req.params.id)); } catch (e) { next(e); }
   });
+  app.post("/api/watches/list-preview", async (req, res, next) => {
+    try { res.json(await watches.previewList(req.body || {})); } catch (e) { next(e); }
+  });
   app.post("/api/watches/check", async (req, res, next) => {
     try { res.json({ results: await watches.checkDue() }); } catch (e) { next(e); }
   });

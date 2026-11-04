@@ -269,6 +269,11 @@ const MIGRATIONS = [
     updated_at TEXT NOT NULL,
     finished_at TEXT NULL
   );
+  `,
+  // list watches (see list-watch.js): the CSS selector of the repeated entries and how many pages to follow
+  `
+  ALTER TABLE watches ADD COLUMN list_selector TEXT NOT NULL DEFAULT '';
+  ALTER TABLE watches ADD COLUMN list_pages INTEGER NOT NULL DEFAULT 3;
   `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

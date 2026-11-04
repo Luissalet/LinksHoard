@@ -74,6 +74,10 @@ El servidor escucha únicamente en `127.0.0.1`. Si el puerto 5181 está ocupado 
 
 El servidor escucha en 127.0.0.1 y solo responde a peticiones cuyo `Host` sea `localhost`, `127.0.0.1` o `[::1]`. Para entrar desde el móvil a través de un túnel que ponga la aplicación delante (una red privada, un proxy inverso), indicad los nombres de host adicionales en `LINKS_ALLOWED_HOSTS`, separados por comas, exactos o `*.sufijo`: `LINKS_ALLOWED_HOSTS=mi-pc.example,*.ts.net`. El puerto y las mayúsculas no importan, y el `Origin` de las llamadas a la API también tiene que corresponder a uno de esos hosts (con cualquier esquema o puerto). Las peticiones *fetch* desde otras webs se siguen rechazando; abrir la aplicación desde otra página (un enlace, un bookmarklet, el menú de compartir) es una navegación normal y funciona.
 
+## La usa Writer's Hoard
+
+Desde el 4 de noviembre de 2026 Writer's Hoard usa esta app por referencia en lugar de llevar una copia: su módulo **Lecturas y enlaces** reenvía sus vistas, archivos de medios y llamadas de herramientas a Links Hoard en marcha, localizada por Hoard Hub, y ofrece arrancarla con el Hub si no lo está. Mantén estables `/api/state`, `/api/links*`, `/api/highlights*`, `/api/watches*`, `/api/video*`, `/api/agent/call` y las rutas de medios: la vista de Writer los usa.
+
 ## Qué hace
 
 - **Guarda al instante.** Pega una URL (o usa el bookmarklet, «Compartir» desde el móvil una vez instalada como app, o la herramienta `save_link` de un asistente) y se guarda inmediatamente con `fetch_status: pending`. Una cola en segundo plano (2 a la vez) descarga la página, extrae el artículo con Readability y rellena título, autoría, extracto y texto completo; la fila se actualiza sola, sin recargar.

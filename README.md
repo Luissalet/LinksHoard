@@ -76,6 +76,10 @@ The server binds to `127.0.0.1` only. If port 5181 is busy it walks up to the ne
 
 The server binds 127.0.0.1 and only answers requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]`. To reach it from your phone through a tunnel that fronts the app (a private mesh network, a reverse proxy), list the extra host names in `LINKS_ALLOWED_HOSTS`, comma-separated, exact names or `*.suffix`: `LINKS_ALLOWED_HOSTS=my-pc.example,*.ts.net`. Port and letter case are ignored, and the `Origin` of API calls must resolve to one of those hosts too (any scheme or port). Cross-site *fetches* are still refused; opening the app from another page (a link, a bookmarklet, the share sheet) is a normal navigation and works.
 
+## Used by Writer's Hoard
+
+Since 4 November 2026 Writer's Hoard uses this app by reference instead of carrying a copy: its **Reading and links** module forwards its views, media files and tool calls to the running Links Hoard, located through Hoard Hub, and offers to start it through the Hub when it is not running. Keep `/api/state`, `/api/links*`, `/api/highlights*`, `/api/watches*`, `/api/video*`, `/api/agent/call` and the media routes stable: Writer's view of this app uses them.
+
 ## What it does
 
 - **Save instantly.** Paste a URL (or use the bookmarklet, the browser share sheet once installed as a PWA, or an assistant's `save_link` tool) and it is stored right away with `fetch_status: pending`. A background queue (2 at a time) downloads the page, extracts the article with Readability and fills in title, byline, excerpt and full text — the row updates itself, no reload needed.

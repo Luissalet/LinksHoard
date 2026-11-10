@@ -17,6 +17,8 @@ import { installVideoRoutes } from "./video-routes.js";
 import { initVideoDigest } from "./videodigest.js";
 import { initCrawls } from "./sitecrawl.js";
 import { installDigestRoutes } from "./digest-routes.js";
+import { initListen } from "./listen.js";
+import { installListenRoutes } from "./listen-routes.js";
 import { installSentidosRoutes } from "./sentidos-routes.js";
 import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
 
@@ -46,6 +48,8 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   initVideoDigest();
   // Site crawls left running by the last run are continued (LINKS_CRAWL_RESUME=0 only marks them interrupted).
   initCrawls();
+  // Escuchar: narrations left unfinished by the last run are followed again.
+  initListen();
 
   const app = express();
   app.disable("x-powered-by");
@@ -55,6 +59,7 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   installMediaRoutes(app);
   installVideoRoutes(app);
   installDigestRoutes(app);
+  installListenRoutes(app);
   installSentidosRoutes(app);
   installAgentRoutes(app, { token });
   const DIST = path.join(ROOT, "dist");

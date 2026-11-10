@@ -60,6 +60,18 @@ export const api = {
     toCards: (id, deck) => request("POST", `/api/highlights/${id}/to-cards`, deck ? { deck } : {}),
     linkToCards: (linkId, deck) => request("POST", `/api/links/${linkId}/cards`, deck ? { deck } : {}),
   },
+  listen: {
+    page: () => request("GET", "/api/listen"),
+    settings: (data) => request("POST", "/api/listen/settings", data),
+    get: (id) => request("GET", `/api/links/${id}/listen`),
+    start: (id, data = {}) => request("POST", `/api/links/${id}/listen`, data),
+    remove: (id) => request("DELETE", `/api/links/${id}/listen`),
+    position: (id, data) => request("POST", `/api/links/${id}/listen/position`, data),
+    queue: () => request("GET", "/api/listen/queue"),
+    queueAdd: (id, position) => request("POST", "/api/listen/queue", { id, position }),
+    queueRemove: (id) => request("DELETE", `/api/listen/queue/${id}`),
+    queueClear: () => request("DELETE", "/api/listen/queue"),
+  },
   videoSearch: (q) => request("GET", `/api/video/search${qs({ q })}`),
   videoDigest: {
     start: (data) => request("POST", "/api/video-digests", data),

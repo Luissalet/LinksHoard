@@ -13,7 +13,7 @@
   },
   "id": "links",
   "name": "Links Hoard",
-  "purpose": "Read-later bookmark library with extracted article text, tags and highlights, stored locally; downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk, signs in to sites from the app, and leaves a layered text digest of a video (speech, frames, on-screen text, what it sounds like) that an assistant can read, search and question; listens to audio locally (what a sound is, music and effects by section, loudness, recorded or synthesized) with its Sentidos engine.",
+  "purpose": "Read-later bookmark library with extracted article text, tags and highlights, stored locally; downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk, signs in to sites from the app, and leaves a layered text digest of a video (speech, frames, on-screen text, what it sounds like) that an assistant can read, search and question; reads a saved link aloud through the family voice studio (narrated MP3 kept with the link, resume point, a «listen later» queue; a digested video is narrated from its summary); listens to audio locally (what a sound is, music and effects by section, loudness, recorded or synthesized) with its Sentidos engine.",
   "capabilities": [
     "bookmarks",
     "read-later",
@@ -38,6 +38,8 @@
     "daily-digest",
     "job-events",
     "video-digest",
+    "listen-to-links",
+    "listen-queue",
     "video-insight",
     "article-questions",
     "site-sign-in",

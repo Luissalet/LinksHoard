@@ -22,6 +22,7 @@ import * as sounds from "./sentidos-tools.js";
 import * as sentidos from "./sentidos.js";
 import { mapSite } from "./sitemap.js";
 import { mapInput, crawlInput, startCrawl, getCrawl, listCrawls, cancelCrawl, resumeCrawl, deleteCrawl } from "./sitecrawl.js";
+import * as listen from "./listen.js";
 
 export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
 Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
@@ -41,6 +42,7 @@ When the user asks to download a link ("descárgame esto", "bájame este vídeo"
 For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
 To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).
 To save a whole documentation site or a section of a website, call map_site first (shows the pages it would save, without saving), then crawl_site with the same filters; it runs in the background, so follow it with crawl_status and report found/saved/skipped/failed plainly. Pages already in the library are skipped, never duplicated. crawl_delete removes a finished job from the history (never the links it saved).
+To listen to a saved link, call listen_link: the voice studio of the family narrates its clean text (a digested video: its summary and chapters) and the MP3 stays with the link; it runs in the background, so follow it with listen_status and say plainly when the text or the voice studio is missing. listen_queue manages «Escuchar después», the queue that plays one audio after another; listen_position remembers where the user stopped.
 Sentidos is the listening engine (local CLAP + AudioSet, no cloud): audio_describe says what a file, a saved link or a URL sounds like, audio_match checks it against a description, audio_find locates a sound by description (without a source it searches the soundtracks of the digests), audio_timeline gives music, effects and ambience by sections, audio_measure the loudness and levels, audio_realness whether it was recorded or synthesized, audio_sheet a PNG of the soundtrack. Every label is an estimate with a z-score: report the verdict (strong, plausible, weak, no match) and never present a weak or unvalidated reading as fact; speech is the transcript's job, not Sentidos'. The first call loads the models (about a minute); audio_status shows whether they are installed and sets them up. A video digest includes a "sound" layer when the engine is ready.`;
 
 const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
@@ -717,6 +719,57 @@ export const TOOLS = [
       else if (a.action === "stop") await sentidos.stop();
       return sentidos.status();
     }),
+  tool("listen_link",
+    "Read a saved link aloud: narrated audio of its text — escuchar un enlace, leer en voz alta\nSends the clean text of a saved article to the family's voice studio (Prospero's Hoard, long-form narration through the hub) and keeps the MP3 with the link: file is its absolute path and audio_url plays it in the app. A video link that has a digest is narrated from the digest's summary and chapters. It runs in the background (status queued/running with progress); wait_s (up to 150) waits for it. The same text and voice are narrated once (existing: true); regenerate makes it again; queue also puts it in «Escuchar después». The voice studio is started, and its voice module turned on, when needed. Report a failure plainly: no text yet (fetch pending, or a video without a digest), the hub or the voice studio not there.\nSinónimos: escuchar artículo, léeme este enlace, audio del artículo, narrar, pasar a audio, leer en voz alta, podcast de un enlace.",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      voice: z.string().trim().max(120).optional().describe("A voice of the voice studio (for example es_ES-sharvard-medium); omit for the default of the link's language"),
+      regenerate: z.boolean().default(false).describe("Narrate again even if the audio exists"),
+      queue: z.boolean().default(false).describe("Also add it to the «Escuchar después» queue"),
+      wait_s: z.number().min(0).max(150).default(0).describe("Seconds to wait for the audio before answering"),
+    }), { idempotentHint: true },
+    async (a) => {
+      const link = resolveLinkOrFail(a);
+      const started = listen.startListen(link.id, { voice: a.voice, regenerate: a.regenerate, queue: a.queue });
+      const view = a.wait_s ? await listen.waitListen(link.id, a.wait_s * 1000) : listen.listenView(link.id);
+      return { ...view, existing: started.existing, ...(listen.ACTIVE.includes(view.status) ? { message: "Sigue generándose: consulta listen_status con este id; no digas que está listo hasta que status sea done." } : {}) };
+    }),
+
+  tool("listen_status",
+    "The narrated audio of a link, or everything there is to listen to — estado del audio, qué tengo para escuchar\nWith id or url: the audio of that link (status none/queued/running/done/failed, progress, duration, file, where the listener stopped, whether the text changed since it was narrated). Without them: the «Escuchar después» queue in order and the library of narrated links. wait_s waits for a narration in progress.\nSinónimos: cómo va el audio, está listo el audio, qué tengo para escuchar, lista de audios, progreso de la lectura.",
+    z.object({ id: z.string().optional(), url: z.string().optional(), wait_s: z.number().min(0).max(150).default(0) }), RO,
+    async (a) => {
+      if (!a.id && !a.url) return { queue: listen.queueList(), library: listen.listenLibrary(), settings: listen.listenSettings() };
+      const link = resolveLinkOrFail(a);
+      return a.wait_s ? await listen.waitListen(link.id, a.wait_s * 1000) : listen.listenView(link.id);
+    }),
+
+  tool("listen_position",
+    "Remember where the listener stopped in a link's audio — reanudar, por dónde iba\nSets the resume point in seconds. finished: true marks it heard to the end: the point goes back to the start, the link leaves the «Escuchar después» queue and is marked read. Read the point with listen_status (position_s).\nSinónimos: reanudar audio, por dónde iba, marcar como escuchado, guardar el minuto.",
+    z.object({ id: z.string().optional(), url: z.string().optional(), position_s: z.number().min(0), finished: z.boolean().optional() }), { idempotentHint: true },
+    (a) => { const link = resolveLinkOrFail(a); return listen.setPosition(link.id, { position_s: a.position_s, finished: a.finished }); }),
+
+  tool("listen_queue",
+    "«Escuchar después»: list, add, remove, move or clear the listening queue — cola de escucha\nThe queue plays in order, one audio after another. add puts a saved link at the end (or at position, 1-based) and starts its narration if it has none; move changes its place; remove takes it out and keeps its audio; clear empties the queue. Always returns the queue in order.\nSinónimos: escuchar después, cola de audios, añadir a la cola, siguiente audio, ordenar la cola, vaciar la cola.",
+    z.object({
+      action: z.enum(["list", "add", "remove", "move", "clear"]).default("list"),
+      id: z.string().optional(), url: z.string().optional(),
+      position: z.number().int().min(1).max(10000).optional().describe("1-based place in the queue (add, move)"),
+    }), {},
+    (a) => {
+      if (a.action === "list") return { queue: listen.queueList() };
+      if (a.action === "clear") return { queue: listen.queueClear() };
+      const link = resolveLinkOrFail(a);
+      if (a.action === "add") return { queue: listen.queueAdd(link.id, { position: a.position || null }) };
+      if (a.action === "remove") return { queue: listen.queueRemove(link.id) };
+      if (!a.position) fail("Indica position para mover.");
+      return { queue: listen.queueMove(link.id, a.position) };
+    }),
+
+  tool("listen_delete",
+    "Delete the narrated audio of a link; the link itself stays — borrar el audio\nRemoves the MP3, its resume point and its place in the queue. The link, its text and its highlights are not touched; listen_link makes the audio again.\nSinónimos: borrar audio, quitar la narración, liberar espacio de audios.",
+    z.object({ id: z.string().optional(), url: z.string().optional() }), { destructiveHint: true, idempotentHint: true },
+    (a) => { const link = resolveLinkOrFail(a); return { ok: listen.deleteListen(link.id), link_id: link.id }; }),
 ];
 
 /** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
@@ -726,6 +779,7 @@ export function callTimeoutMs(name, args = {}) {
   if (name === "link_video_analyze" && args.wait !== false) return ((Number(args.timeout_s) || 120) + 30) * 1000;
   if (name === "video_digest" && args.wait !== false) return ((Number(args.timeout_s) || 600) + 30) * 1000;
   if (name === "video_ask") return 960_000;
+  if (name === "listen_link" || name === "listen_status") return ((Number(args.wait_s) || 0) + 60) * 1000;
   if (name === "video_frame") return 120_000;
   if (name.startsWith("audio_")) return name === "audio_status" ? 120_000 : (((Number(args.timeout_s) || 0) + 1200) * 1000);
   if (name === "media_status" && args.wait_s) return (Number(args.wait_s) + 30) * 1000;

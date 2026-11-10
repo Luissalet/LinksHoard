@@ -11,6 +11,8 @@ import Vigia from "./pages/Vigia.jsx";
 import Descargas from "./pages/Descargas.jsx";
 import Videos from "./pages/Videos.jsx";
 import Sentidos from "./pages/Sentidos.jsx";
+import Escuchar from "./pages/Escuchar.jsx";
+import { ListenProvider, ListenBar } from "./listen.jsx";
 import { linksContext, viewFields, COPILOT_CONTEXT, COPILOT_REFRESH } from "./hoard-copilot.js";
 
 const PAGES = [
@@ -20,6 +22,7 @@ const PAGES = [
   { path: "favoritos", label: "Favoritos", icon: "M12 4l2.5 5.5L20 10l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z", component: Favoritos },
   { path: "vigia", label: "Vigía", icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM12 9a3 3 0 100 6 3 3 0 000-6z", component: Vigia },
   { path: "descargas", label: "Descargas", icon: "M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14", component: Descargas },
+  { path: "escuchar", label: "Escuchar", icon: "M4 14v-2a8 8 0 0116 0v2M4 14h3v6H5a1 1 0 01-1-1zM20 14h-3v6h2a1 1 0 001-1z", component: Escuchar },
   { path: "videos", label: "Vídeos", icon: "M4 6h12v12H4zM16 10l4-2v8l-4-2", component: Videos },
   { path: "sentidos", label: "Sentidos", icon: "M4 12h2l2-6 3 12 3-9 2 3h4", component: Sentidos },
   { path: "ajustes", label: "Ajustes", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h2m12 0h2M12 4v2m0 12v2", component: Ajustes },
@@ -88,6 +91,7 @@ export default function App() {
 
   return (
     <AppContext.Provider value={value}>
+      <ListenProvider notify={notify}>
       <div className="min-h-dvh md:grid md:grid-cols-[224px_minmax(0,1fr)]">
         <aside className="sticky top-0 z-10 border-b md:h-dvh md:border-b-0 md:border-r" style={{ background: "var(--sidebar)", borderColor: "var(--line)" }}>
           <div className="flex items-center gap-2 px-4 py-3 md:px-5 md:py-5">
@@ -126,6 +130,8 @@ export default function App() {
           {state ? <Component key={readerMatch?.[1] || route} linkId={readerMatch?.[1]} paragraphId={readerQuery.get("paragraph")} sourceVersion={readerQuery.get("version")} /> : !error && <p className="help p-8">Cargando…</p>}
         </main>
       </div>
+      <ListenBar />
+      </ListenProvider>
       <Toast message={toast} onClose={() => setToast(null)} />
     </AppContext.Provider>
   );

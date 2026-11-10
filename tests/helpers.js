@@ -16,7 +16,18 @@ process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
 // A test's fabricated providers must never discover or launch production apps.
 process.env.HOARD_HUB_URL = 'http://127.0.0.1:1';
 // The family folder (~/.hoard/bin) may hold the real yt-dlp of a developer machine: tests that look for programs must not find it.
-process.env.HOARD_HOME = path.join(os.tmpdir(), "links-hoard-test-hoard-home");
+// A folder of this process alone, gone when it ends: one shared by every run kept whatever a run left in it, and a program
+// left there was then found by every later run.
+const testHoardHome = fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-home-"));
+process.env.HOARD_HOME = testHoardHome;
+process.on("exit", () => { try { fs.rmSync(testHoardHome, { recursive: true, force: true }); } catch { /* still in use */ } });
+// On a loaded machine the fake Python can look absent, and the updater then downloads the real yt-dlp release: never from a test.
+const networkFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+  const url = typeof input === "string" || input instanceof URL ? String(input) : String(input?.url || "");
+  if (/^https:\/\/github\.com\/yt-dlp\//.test(url)) return Promise.reject(new Error("tests do not download programs"));
+  return networkFetch(input, init);
+};
 // ...and must never start the real Sentidos worker of this machine: point its environment at a folder that does not exist.
 process.env.LINKS_SENTIDOS_VENV = path.join(os.tmpdir(), "links-hoard-test-no-sentidos-venv");
 

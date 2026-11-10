@@ -174,6 +174,26 @@ export function digestView(linkId, { level = null, from = null, to = null, maxCh
   return out;
 }
 
+/** What a voice reads for a digested video: the generated summary, the key points and each chapter with its summary
+ *  (or, for a chapter without one, how it starts). { title, text } or null when the link has no usable digest. */
+export function digestNarration(linkId) {
+  const row = getRow(linkId);
+  if (!row || !["done", "partial"].includes(row.status)) return null;
+  const m = readModel(linkId);
+  if (!m) return null;
+  const out = [];
+  const s = m.summary || {};
+  if (s.tldr) out.push(String(s.tldr).trim());
+  if (s.key_points?.length) out.push(`Puntos clave. ${s.key_points.map((p) => String(p).trim().replace(/[.;]?$/, ".")).join(" ")}`);
+  for (const c of m.chapters || []) {
+    const body = c.summary ? String(c.summary).trim() : c.said ? `Empieza diciendo: ${String(c.said).trim().slice(0, 400)}` : "";
+    if (!c.title && !body) continue;
+    out.push([c.title ? `${String(c.title).trim().replace(/[.:]?$/, ".")}` : "", body].filter(Boolean).join(" "));
+  }
+  const text = out.filter(Boolean).join("\n\n");
+  return text ? { title: m.title || "", text } : null;
+}
+
 /** One layer as text; with from/to (seconds) the visual and transcript layers are cut to that span. */
 export function readLayer(linkId, level = "brief", { from = null, to = null } = {}) {
   const dir = digestDir(linkId);

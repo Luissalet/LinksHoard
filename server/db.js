@@ -274,6 +274,31 @@ const MIGRATIONS = [
   `
   ALTER TABLE watches ADD COLUMN list_selector TEXT NOT NULL DEFAULT '';
   ALTER TABLE watches ADD COLUMN list_pages INTEGER NOT NULL DEFAULT 3;
+  `,
+  // Escuchar (see listen.js): the narrated audio of a link, where the listener stopped, and its place in «Escuchar después»
+  `
+  CREATE TABLE link_listen (
+    link_id TEXT PRIMARY KEY REFERENCES links(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'none',
+    source TEXT NOT NULL DEFAULT 'article',
+    voice TEXT NOT NULL DEFAULT '',
+    text_hash TEXT NOT NULL DEFAULT '',
+    chars INTEGER NOT NULL DEFAULT 0,
+    job_id TEXT NOT NULL DEFAULT '',
+    progress REAL NOT NULL DEFAULT 0,
+    detail TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    duration_s REAL NOT NULL DEFAULT 0,
+    bytes INTEGER NOT NULL DEFAULT 0,
+    chapters TEXT NOT NULL DEFAULT '[]',
+    position_s REAL NOT NULL DEFAULT 0,
+    finished INTEGER NOT NULL DEFAULT 0,
+    played_at TEXT NULL,
+    queue_pos INTEGER NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX link_listen_queue ON link_listen(queue_pos);
   `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

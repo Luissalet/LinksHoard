@@ -6,6 +6,8 @@ export async function startFakeHub() {
     events: [],     // posted to /api/events: { type, source, data }
     calls: [],      // proxy calls: { app, tool, arguments }
     tools: {},      // "app.tool" -> (arguments) => result, or { __error: { status, error } }
+    apps: {},       // app id -> what GET /api/apps/<id> answers ({ state, url }); POST /api/apps/<id>/start marks it running
+    started: [],    // app ids the caller asked the hub to start
     emitStatus: 200,
   };
   const server = http.createServer((req, res) => {
@@ -20,6 +22,13 @@ export async function startFakeHub() {
         if (state.emitStatus !== 200) return send(state.emitStatus, { error: "nope" });
         state.events.push(body);
         return send(200, { ok: true });
+      }
+      const one = url.pathname.match(/^\/api\/apps\/([^/]+)(\/start)?$/);
+      if (one && (req.method === "GET" || one[2])) {
+        const app = state.apps[one[1]];
+        if (!app) return send(404, { ok: false, error: "unknown app" });
+        if (one[2]) { state.started.push(one[1]); app.state = "running"; return send(200, { ok: true, ready: true }); }
+        return send(200, { id: one[1], ...app });
       }
       const proxy = url.pathname.match(/^\/api\/apps\/([^/]+)\/call$/);
       if (req.method === "POST" && proxy) {

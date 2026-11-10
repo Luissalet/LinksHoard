@@ -31,6 +31,19 @@ changed text are reported. Quote checks verify provenance, not interpretation;
 questions and answers are transient and do not edit the saved library.
 See [the API, MCP contract and limits](docs/ARTICLE_QUESTIONS.md).
 
+## Listen
+
+A saved link can be listened to. In the reader, **Escuchar** sends the clean text of the article (the same text you read, without addresses, markup or reference marks) to Prospero's Hoard, which narrates it sentence by sentence as a background job; the progress is shown meanwhile and you can keep reading. The MP3 and the timing of each sentence are copied to `data/listen/<id>/`, so the audio plays with Prospero stopped.
+
+- **Player.** One bar at the bottom, the same across the app: play and pause, −15 s, +30 s, position, speed (0.8× to 2×, remembered) and next. You can keep browsing while it plays.
+- **Resume where you stopped.** The position is saved on the server every 5 seconds, on pause and on close; the reader's button becomes «Reanudar desde 3:12» in any browser. At the end the link is marked as listened and as read, and the position goes back to the start.
+- **Escuchar después.** An ordered queue (the **Escuchar** page): add from the reader or from the list of audios, reorder with ↑ ↓, and «Escuchar la cola» plays it through: when an audio ends the next one starts, and what you heard leaves the queue. Adding a link to the queue makes its audio if it had none.
+- **Videos.** A video link that has a digest is narrated from its summary, key points and each chapter with its summary, not from the page. A video without a digest says it has to be digested first.
+- **Voice.** By default `es_ES-davefx-medium` or `en_US-lessac-medium` by the link's language; the Escuchar page sets another one (any voice installed in Prospero). The same text and voice are narrated once; when the text changes (after a refetch) the reader says so and «Volver a generar» updates it.
+- **Without opening Prospero.** When Prospero is not running the Hub is asked to start it, and when its voice module is off it is turned on. If Prospero restarts in the middle of a narration, the request is made again and continues from the chapters already rendered.
+
+Tools: `listen_link`, `listen_status`, `listen_position`, `listen_queue` and `listen_delete`. The API and MCP contract and the limits are in [docs/ESCUCHAR.md](docs/ESCUCHAR.md).
+
 ## Run
 
 Requires Node.js 22.13 or later (it uses the built-in `node:sqlite`). No native modules, no Docker.
@@ -245,7 +258,7 @@ Tools:
 | `video_frame` | The exact frame at an instant (`t`, `width`): path, size and token cost. |
 | `video_digests` | The latest digests and their state. |
 
-46 tools in total. `GET /api/agent/tools` always reflects the live list. Tool descriptions end with a `Sinónimos:` line of Spanish words, so a Spanish-speaking user's phrasing ("guarda esto", "resumen de la semana") matches the right tool.
+65 tools in total. `GET /api/agent/tools` always reflects the live list. Tool descriptions end with a `Sinónimos:` line of Spanish words, so a Spanish-speaking user's phrasing ("guarda esto", "resumen de la semana") matches the right tool.
 
 The assistant is instructed to summarize or quote a link only from the text `read_link` returns, never from the title alone, and to say plainly when a fetch is still pending or failed rather than guessing.
 

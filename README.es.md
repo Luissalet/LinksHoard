@@ -32,6 +32,19 @@ citas inválidas y cambios del artículo. La cita comprobada acredita su origen,
 no la interpretación; preguntas y respuestas son temporales y no editan la
 biblioteca. Consulta [el contrato de API/MCP y los límites](docs/ARTICLE_QUESTIONS.md).
 
+## Escuchar
+
+Un enlace guardado se puede escuchar. En el lector, **Escuchar** manda el texto limpio del artículo (el mismo que se lee, sin direcciones, marcas ni referencias) a Prospero's Hoard, que lo narra frase a frase como trabajo en segundo plano; mientras tanto se ve el avance y se puede seguir leyendo. El MP3 y los tiempos de cada frase se copian a `data/listen/<id>/`, así que el audio suena aunque Prospero esté parado.
+
+- **Reproductor.** Una barra abajo, la misma en toda la app: reproducir y pausar, −15 s, +30 s, posición, velocidad (0,8× a 2×, se recuerda) y siguiente. Se puede seguir navegando mientras suena.
+- **Reanudar donde lo dejaste.** La posición se guarda en el servidor cada 5 segundos, al pausar y al cerrar; el botón del lector pasa a ser «Reanudar desde 3:12» en cualquier navegador. Al llegar al final el enlace queda como escuchado y como leído, y la posición vuelve al principio.
+- **Escuchar después.** Una cola ordenada (página **Escuchar**): se añade desde el lector o desde la lista de audios, se reordena con ↑ ↓, y «Escuchar la cola» la reproduce seguida: al terminar un audio empieza el siguiente y el que has oído sale de la cola. Añadir un enlace a la cola genera su audio si no lo tenía.
+- **Vídeos.** Si el enlace es un vídeo con digest, se lee el resumen, los puntos clave y cada capítulo con su resumen, no la página. Un vídeo sin digest dice que hay que digerirlo primero.
+- **Voz.** Por defecto `es_ES-davefx-medium` o `en_US-lessac-medium` según el idioma del enlace; en la página Escuchar se fija otra (cualquier voz instalada en Prospero). El mismo texto con la misma voz se narra una sola vez; si el texto cambia (al volver a descargar la página) el lector avisa y «Volver a generar» lo actualiza.
+- **Sin abrir Prospero.** Si Prospero no está arrancado se le pide al Hub que lo arranque, y si tiene apagado su módulo de voz se enciende. Si Prospero se reinicia a media lectura, se vuelve a pedir y continúa desde los capítulos ya hechos.
+
+Herramientas: `listen_link`, `listen_status`, `listen_position`, `listen_queue` y `listen_delete`. El contrato de API y MCP y los límites están en [docs/ESCUCHAR.md](docs/ESCUCHAR.md).
+
 ## Abrir
 
 Necesita Node.js 22.13 o posterior (usa el `node:sqlite` integrado). Sin módulos nativos ni Docker.
@@ -219,7 +232,7 @@ Herramientas:
 | `video_frame` | El fotograma exacto de un instante (`t`, `width`): ruta, tamaño y coste en tokens. |
 | `video_digests` | Los últimos digests y su estado. |
 
-Son 46 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
+Son 65 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
 
 El asistente tiene instrucciones de resumir o citar un enlace solo a partir del texto que devuelve `read_link`, nunca solo del título, y de decir con claridad cuándo una descarga sigue pendiente o falló en lugar de inventar un resumen.
 

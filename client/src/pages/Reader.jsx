@@ -5,6 +5,7 @@ import { useAction, ConfirmDialog } from "../components/ui.jsx";
 import VideoInsight from "../components/VideoInsight.jsx";
 import VideoDigest from "../components/VideoDigest.jsx";
 import ArticleQuestions from "../components/ArticleQuestions.jsx";
+import ListenPanel from "../components/ListenPanel.jsx";
 import { formatDate, isMediaUrl, kindLabel, readingTime } from "../format.js";
 import { useCopilotRefresh } from "../useCopilotRefresh.js";
 import { COPILOT_CONTEXT } from "../hoard-copilot.js";
@@ -197,6 +198,8 @@ export default function Reader({ linkId, paragraphId, sourceVersion }) {
           </div>
         </div>
       </header>
+
+      {link.fetch_status !== "pending" && <ListenPanel key={`listen:${linkId}:${link.fetched_at || ""}`} linkId={linkId} notify={notify} />}
 
       {link.fetch_status === "pending" && <p className="help mb-4">Descargando y extrayendo el texto…</p>}
       {link.fetch_status === "failed" && (

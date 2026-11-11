@@ -13,7 +13,7 @@ export function FetchBadge({ status }) {
 
 export default function LinkRow({ link, selected, onOpen, onToggleRead, onToggleArchive, onToggleFavorite, onSelect }) {
   return (
-    <li className={`link-row ${selected ? "bg-[var(--soft)]" : ""}`}>
+    <li className={`link-row ${selected ? "bg-[var(--soft)]" : ""}`} data-link-id={link.id} data-link-title={link.title || link.url} data-selected={selected ? "true" : undefined}>
       <button type="button" className="mt-1 shrink-0" aria-label={link.read_at ? "Marcar sin leer" : "Marcar leído"} onClick={() => onToggleRead(link)}>
         <SiteChip site={link.site} />
       </button>

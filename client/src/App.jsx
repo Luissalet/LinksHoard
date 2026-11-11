@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
+import { installAppDock } from "./app-dock.js";
 import { Toast } from "./components/ui.jsx";
 import Bandeja from "./pages/Bandeja.jsx";
 import Todo from "./pages/Todo.jsx";
@@ -65,6 +66,7 @@ export default function App() {
     }
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => installAppDock({ api, refresh, pages: PAGES.map((p) => p.path) }), [refresh]);
   useEffect(() => {
     const adapter = {
       context: async () => {
@@ -85,7 +87,7 @@ export default function App() {
 
   const readerMatch = route.match(/^link\/([^?]+)(?:\?(.*))?$/);
   const readerQuery = new URLSearchParams(readerMatch?.[2] || "");
-  const page = PAGES.find((p) => p.path === route) || PAGES[0];
+  const page = PAGES.find((p) => p.path === route.split("?")[0]) || PAGES[0];
   const Component = readerMatch ? Reader : page.component;
   const activePath = readerMatch ? null : page.path;
 

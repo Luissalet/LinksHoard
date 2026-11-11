@@ -283,3 +283,7 @@ Sentidos is tested with its Python worker replaced by a function (`setSentidosRu
 Open goals and known issues are kept in [docs/OBJETIVOS.md](docs/OBJETIVOS.md) and [docs/REVISAR.md](docs/REVISAR.md) (in Spanish).
 
 Design and decisions: [`DESIGN.md`](DESIGN.md).
+
+## Skills
+
+The `skills` block of `faustus-plugin.json` names the procedures of the family's skill library that fit this app's work: `read-later-digest`, `web-to-clean-markdown`. The hub's Skills tab shows and changes them. This app does not hand them to connecting agents yet.

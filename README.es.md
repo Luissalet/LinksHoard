@@ -1,53 +1,63 @@
-> **Links Hoard vuelve a ser un Hoard propio** (decisión del 28-10-2026). Estuvo absorbido en Writer's Hoard; ahora corre con su propio
-> servidor y puerto (5181), con el id de app `links`, su carpeta de datos y su puente MCP, y Writer lo llama como módulo externo para
-> guardar referencias. Conserva todo lo que hacía la copia absorbida (las mismas 46 herramientas MCP, con los mismos nombres) y suma
-> **Sentidos**, el motor de escucha. Se arranca desde el Hoard Hub o con `npm start`.
+<img src="app-icon.png" width="96" alt="">
 
 # Links Hoard
 
-Bandeja de lectura local: guarda una URL, obtén el texto del artículo extraído, etiquétalo, subraya pasajes y busca en todo — todo en un único archivo SQLite en vuestro ordenador, expuesto a un asistente mediante MCP.
+Biblioteca local de «leer después»: guarda una URL, obtén el texto extraído del artículo, etiquétalo y subráyalo, busca en todo y deja que un asistente lo use por MCP. [English](README.md)
 
-English version: [`README.md`](README.md).
+## Qué es
 
-## Copilot de Faustus
+Links Hoard guarda los enlaces en un único archivo SQLite de tu propio ordenador. Al guardar un enlace se descarga la página en segundo plano y se extrae el artículo legible (título, autor, extracto, texto completo), de modo que lees una copia limpia y puedes buscar en ella después. Además de marcadores, sigue feeds y páginas, descarga medios, digiere vídeos, narra artículos y responde preguntas sobre lo que has guardado.
 
-El botón Faustus abre el panel de conversación común en todas las vistas.
-Faustus guarda conversaciones, borradores, memoria y ejecución; Links aporta
-el enlace nativo abierto, el párrafo vigente, la selección y los campos del
-formulario sin guardar. Las altas y los enlaces inexistentes aportan el contexto
-de la aplicación sin inventar un objeto. Al terminar el turno se refrescan las
-listas y el lector conservando notas y ajustes sin guardar. Añadir o quitar una
-etiqueta conserva las añadidas por el agente. `edit_link` permite editar solo
-los campos indicados de título, notas y etiquetas por API de agente y MCP.
-Las credenciales quedan en el servidor; su destino se configura con
-`LINKS_FAUSTUS_URL` o los ajustes del backend.
+Funciona como un Hoard propio, con su servidor, puerto, carpeta de datos y puente MCP. Writer's Hoard lo usa por referencia para su módulo de lectura y enlaces.
 
-## Preguntar a un artículo guardado
+## Qué hace
 
-El formulario **Preguntar al artículo** del lector responde mediante el modelo
-del Hub con citas literales y enlaces a los párrafos de origen. Al pulsarlos,
-el párrafo se resalta y recibe el foco. MCP ofrece lo mismo con `ask_link` y
-`read_link_paragraphs`. Se informa de texto parcial, modelos no disponibles,
-citas inválidas y cambios del artículo. La cita comprobada acredita su origen,
-no la interpretación; preguntas y respuestas son temporales y no editan la
-biblioteca. Consulta [el contrato de API/MCP y los límites](docs/ARTICLE_QUESTIONS.md).
+### Guardar y leer
+- Pega una URL, usa el bookmarklet, comparte hacia la PWA instalada (el manifiesto declara un destino de compartir) o llama a `save_link`. El enlace se guarda al instante y una cola en segundo plano lo descarga; guardar es idempotente sobre una URL normalizada (se ignoran parámetros de seguimiento, fragmentos, puertos por defecto y barras finales).
+- Lector con tamaño de letra ajustable, URL original, sitio, autor y tiempo de lectura; selecciona texto para subrayarlo con una nota opcional.
+- Etiquetas, favoritos, archivo y estado leído/no leído, con recuento de etiquetas y filtro por sitio.
+- Búsqueda de texto completo (SQLite FTS5, con alternativa automática `LIKE`) en título, descripción, texto, notas, etiquetas y transcripciones de vídeo.
+- Importación masiva desde una exportación de marcadores del navegador (HTML Netscape) o una lista de URL, sin duplicar lo que ya tienes.
+- Resumen semanal de lo guardado desde una fecha, agrupado por sitio.
+- Sugerencias de «para leer hoy» entre lo guardado sin leer, y planes de lectura que encajan textos completos sin leer en un presupuesto de minutos. Véase [docs/READING_PLAN.md](docs/READING_PLAN.md).
+- Los subrayados se pueden enviar a Hypatia's Hoard como tarjetas en el mazo «Lecturas».
 
-## Escuchar
+### Preguntar a un artículo guardado
+- El lector responde preguntas sobre un artículo con el modelo del Hub, con citas exactas y anclas de párrafo clicables; se avisa de citas inválidas y de texto cambiado. Las preguntas y respuestas son transitorias. Véase [docs/ARTICLE_QUESTIONS.md](docs/ARTICLE_QUESTIONS.md).
 
-Un enlace guardado se puede escuchar. En el lector, **Escuchar** manda el texto limpio del artículo (el mismo que se lee, sin direcciones, marcas ni referencias) a Prospero's Hoard, que lo narra frase a frase como trabajo en segundo plano; mientras tanto se ve el avance y se puede seguir leyendo. El MP3 y los tiempos de cada frase se copian a `data/listen/<id>/`, así que el audio suena aunque Prospero esté parado.
+### Vigías
+- Sigue un feed RSS/Atom, un repositorio de GitHub (versiones, etiquetas o commits) o una página normal (diferencia de texto en cada cambio), cada uno con su propio intervalo.
+- Las vigías de lista siguen las entradas de una página sin feed (ofertas, productos, anuncios) con un selector CSS encontrado automáticamente o dado por ti.
+- Los elementos que traen las vigías se pueden leer, descartar o guardar como enlaces.
 
-- **Reproductor.** Una barra abajo, la misma en toda la app: reproducir y pausar, −15 s, +30 s, posición, velocidad (0,8× a 2×, se recuerda) y siguiente. Se puede seguir navegando mientras suena.
-- **Reanudar donde lo dejaste.** La posición se guarda en el servidor cada 5 segundos, al pausar y al cerrar; el botón del lector pasa a ser «Reanudar desde 3:12» en cualquier navegador. Al llegar al final el enlace queda como escuchado y como leído, y la posición vuelve al principio.
-- **Escuchar después.** Una cola ordenada (página **Escuchar**): se añade desde el lector o desde la lista de audios, se reordena con ↑ ↓, y «Escuchar la cola» la reproduce seguida: al terminar un audio empieza el siguiente y el que has oído sale de la cola. Añadir un enlace a la cola genera su audio si no lo tenía.
-- **Vídeos.** Si el enlace es un vídeo con digest, se lee el resumen, los puntos clave y cada capítulo con su resumen, no la página. Un vídeo sin digest dice que hay que digerirlo primero.
-- **Voz.** Por defecto `es_ES-davefx-medium` o `en_US-lessac-medium` según el idioma del enlace; en la página Escuchar se fija otra (cualquier voz instalada en Prospero). El mismo texto con la misma voz se narra una sola vez; si el texto cambia (al volver a descargar la página) el lector avisa y «Volver a generar» lo actualiza.
-- **Sin abrir Prospero.** Si Prospero no está arrancado se le pide al Hub que lo arranque, y si tiene apagado su módulo de voz se enciende. Si Prospero se reinicia a media lectura, se vuelve a pedir y continúa desde los capítulos ya hechos.
+### Guardar un sitio entero
+- Mapea un sitio o sección a partir de sus sitemaps y enlaces, con patrones de inclusión y exclusión, y guarda las páginas como enlaces en una tarea en segundo plano que respeta `robots.txt`, salta lo ya guardado, se puede reanudar o cancelar y deja historial.
 
-Herramientas: `listen_link`, `listen_status`, `listen_position`, `listen_queue` y `listen_delete`. El contrato de API y MCP y los límites están en [docs/ESCUCHAR.md](docs/ESCUCHAR.md).
+### Descargas
+- Vídeo, audio y publicaciones de fotos de YouTube, X, Instagram, TikTok, SoundCloud, Vimeo, Twitch, Reddit, Facebook, Bilibili y cualquier otro sitio que admita yt-dlp, usando yt-dlp, gallery-dl y ffmpeg como programas aparte.
+- Formatos `video` (MP4), `audio` (MP3), `image` o `auto`; elección de calidad, tramos y listas de reproducción opcionales; cola de una en una con progreso, cancelación y reintento.
+- Un botón «Iniciar sesión con <sitio>» para publicaciones privadas, con el perfil de navegador propio de la app; inicias sesión tú, nunca el asistente.
+- yt-dlp se actualiza solo cuando envejece o falla como falla una versión antigua.
+- Las descargas terminadas se pueden guardar como enlaces con la etiqueta `descarga`.
 
-## Abrir
+### Vídeo
+- **Análisis**: transcripción con marcas de tiempo (Funes a través de Hoard Link, o faster-whisper local) y hasta 24 fotogramas clave por cambio de escena; la transcripción es buscable.
+- **Digest**: descarga, transcribe, lee el texto en pantalla por OCR y escribe capítulos y un resumen con los modelos locales del Hub en un dosier por capas que un asistente puede leer barato, interrogar y buscar. Véase [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
 
-Necesita Node.js 22.13 o posterior (usa el `node:sqlite` integrado). Sin módulos nativos ni Docker.
+### Escuchar
+- Narra un artículo guardado (o el digest de un vídeo) con Prospero's Hoard, frase a frase como tarea en segundo plano, con el audio guardado en local.
+- Barra de reproducción con pausa, saltos, velocidad y reanudación de posición; una cola ordenada de «escuchar después»; voz elegida según el idioma del enlace o en la página Escuchar. Véase [docs/ESCUCHAR.md](docs/ESCUCHAR.md).
+
+### Sentidos
+- Un motor de escucha local (modelos CLAP y AudioSet en CPU) que describe un sonido, encuentra y compara sonidos, mide audio, comprueba lo real que suena, dibuja líneas de tiempo y hojas de contacto y construye una capa de banda sonora para los digests de vídeo. Véase [docs/SENTIDOS.md](docs/SENTIDOS.md).
+
+### Copiloto de Faustus y App Dock
+- El panel común de Faustus está en todas las vistas y recibe el enlace actual, el párrafo o texto seleccionado y los valores de formulario sin guardar; las listas y el lector se refrescan tras un turno sin perder notas sin guardar.
+- Junto a un chat de Faustus, la app registra herramientas de vista (`links_open`, `links_filter`, `links_view`) para que el asistente abra enlaces, aplique filtros y cambie de sección. Véase [docs/COPILOT.md](docs/COPILOT.md).
+
+## Cómo ejecutarlo
+
+Requiere Node.js 22.13 o posterior (usa `node:sqlite` integrado). Sin módulos nativos ni Docker.
 
 ```sh
 npm install
@@ -55,205 +65,57 @@ npm run build
 npm start          # http://127.0.0.1:5181
 ```
 
-`npm run open` arranca el servidor y abre el navegador en Windows. `npm run dev` ejecuta la API (`node --watch`) y Vite a la vez con el proxy de `/api` configurado solo.
+`npm run open` arranca el servidor y abre el navegador en Windows; `npm run dev` ejecuta la API con `node --watch` junto con Vite. El servidor escucha solo en `127.0.0.1`. Si el puerto 5181 está ocupado toma el siguiente libre; `PORT_STRICT=1` hace que falle.
 
-El servidor escucha únicamente en `127.0.0.1`. Si el puerto 5181 está ocupado avanza al siguiente libre y muestra la dirección; con `PORT_STRICT=1` falla en lugar de cambiar.
-
-### Variables de entorno
-
-| Variable | Uso |
+| Variable | Para qué sirve |
 | --- | --- |
 | `LINKS_PORT` / `PORT` | Puerto preferido (por defecto `5181`). |
-| `PORT_STRICT=1` | No buscar otro puerto. |
-| `LINKS_DATA_DIR` | Carpeta de datos (por defecto `<repo>/data`, ignorada por git). Contiene `links-hoard.db` y `mcp-token`. |
-| `LINKS_ALLOWED_HOSTS` | Nombres de host adicionales aceptados detrás de un túnel (ver más abajo). |
-| `LINKS_URL` | Puente MCP: URL de la aplicación (por defecto `http://127.0.0.1:5181`). Debe ser local. |
-| `LINKS_TOKEN_FILE` / `LINKS_TOKEN` | Puente MCP: de dónde leer el token (por defecto `<datos>/mcp-token`). |
-| `LINKS_ALLOW_PRIVATE_URLS=1` | Permite que la aplicación descargue páginas, feeds y medios de direcciones de este equipo o de tu red (un NAS, una wiki en la LAN). Desactivado por defecto: solo se llega a internet público y se comprueba cada redirección. |
-| `LINKS_MEDIA_DIR` | Carpeta de descargas si no hay una en Ajustes (por defecto `<usuario>/Downloads/Links Hoard`). |
-| `LINKS_YTDLP` / `LINKS_GALLERYDL` / `LINKS_FFMPEG` | Ruta de cada programa (ver [Descargas](#descargas)). También admite `node:<script.js>` y `python -m yt_dlp`. También valen las variables de toda la familia `HOARD_YTDLP`, `HOARD_GALLERYDL` y `HOARD_FFMPEG`, que ganan. |
-| `HOARD_HOME` | La carpeta de la familia; en `<HOARD_HOME>/bin` se buscan los programas (por defecto `~/.hoard`). |
-| `LINKS_MEDIA_SIBLING_DIR` | Una carpeta más donde buscar los programas, después de `<HOARD_HOME>/bin` y antes del `PATH` (por defecto `../Writers hoard desktop/resources/bin`); `off` la desactiva. |
-| `LINKS_MEDIA_AUTO_UPDATE` / `LINKS_MEDIA_STALE_DAYS` | `0` desactiva la actualización automática de yt-dlp (igual que el interruptor de Ajustes); antigüedad en días a partir de la cual yt-dlp se actualiza antes de descargar (por defecto 45). |
-| `PYTHON` | Intérprete de Python para `python -m yt_dlp` y `pip install -U` (por defecto `python3`, `python` o `py -3`). |
-| `LINKS_SENTIDOS_VENV` / `LINKS_SENTIDOS_HOME` / `LINKS_SENTIDOS_BASE_PYTHON` / `LINKS_SENTIDOS_IDLE_MIN` | Sentidos (el motor de escucha): su entorno de Python (por defecto `<repo>/.venv-sentidos`), su carpeta de modelos (por defecto `<datos>/sentidos`), el Python con el que se crea el entorno y los minutos sin uso antes de parar el motor (por defecto 20, 0 = nunca). Ver [docs/SENTIDOS.md](docs/SENTIDOS.md). |
-| `LINKS_COOKIES_FILE` | Archivo de cookies en formato Netscape para publicaciones privadas (el ajuste de Ajustes tiene prioridad). |
-| `LINKS_COOKIES_BROWSERS` | Navegadores a probar para las cookies, separados por comas y en orden (por defecto `firefox,chrome,edge,brave,chromium,vivaldi,opera`). |
-| `LINKS_LOGIN_BROWSER` | Navegador para la ventana de inicio de sesión (por defecto, el predeterminado del sistema si es Chromium; si no, el primero que encuentre de Chrome, Edge, Brave, Vivaldi, Chromium; en Ajustes se puede elegir). |
-| `LINKS_SESSIONS_DIR` | Dónde viven el perfil de inicio de sesión y `cookies.txt` (por defecto `<datos>/sessions`). |
-| `LINKS_MEDIA_TRANSCODE=0` | No recodificar los vídeos descargados que no sean H.264/AAC. |
+| `LINKS_DATA_DIR` | Carpeta de datos (por defecto `<repo>/data`): `links-hoard.db` y `mcp-token`. |
+| `LINKS_ALLOWED_HOSTS` | Nombres de host extra aceptados detrás de un túnel, separados por comas, exactos o `*.sufijo`. |
+| `LINKS_ALLOW_PRIVATE_URLS=1` | Permite descargar desde esta máquina o tu red; desactivado por defecto. |
+| `LINKS_URL`, `LINKS_TOKEN_FILE` / `LINKS_TOKEN` | Puente MCP: URL base de la app en marcha y dónde leer su token. |
+| `LINKS_MEDIA_DIR` | Carpeta de descargas si no hay una en Ajustes (por defecto `<home>/Downloads/Links Hoard`). |
+| `LINKS_YTDLP`, `LINKS_GALLERYDL`, `LINKS_FFMPEG` | Rutas de los programas externos; las variantes `HOARD_*` de toda la familia también valen y prevalecen. |
+| `LINKS_FAUSTUS_URL` | Endpoint de Faustus para el copiloto. |
+| `LINKS_WATCHES=0` | Desactiva el planificador de vigías. |
+| `LINKS_VIDEO`, `LINKS_VIDEO_AUTO`, `LINKS_VIDEO_AUTO_DOWNLOAD` | Controlan el análisis de vídeo en segundo plano y las descargas automáticas. |
+| `LINKS_WHISPER_MODEL` | Modelo faster-whisper local para la transcripción de reserva. |
+| `LINKS_SENTIDOS_VENV`, `LINKS_SENTIDOS_HOME` | Entorno Python y carpeta del motor Sentidos. |
+| `LINKS_COOKIES_FILE`, `LINKS_SESSIONS_DIR` | Archivo de cookies y carpeta de sesiones de inicio de sesión para publicaciones privadas. |
 
-### Acceso desde el móvil (a través de un túnel)
+El servidor solo responde a peticiones cuyo `Host` sea `localhost`, `127.0.0.1` o `[::1]`; para acceder desde el móvil por un túnel, añade los nombres de host del túnel a `LINKS_ALLOWED_HOSTS`.
 
-El servidor escucha en 127.0.0.1 y solo responde a peticiones cuyo `Host` sea `localhost`, `127.0.0.1` o `[::1]`. Para entrar desde el móvil a través de un túnel que ponga la aplicación delante (una red privada, un proxy inverso), indicad los nombres de host adicionales en `LINKS_ALLOWED_HOSTS`, separados por comas, exactos o `*.sufijo`: `LINKS_ALLOWED_HOSTS=mi-pc.example,*.ts.net`. El puerto y las mayúsculas no importan, y el `Origin` de las llamadas a la API también tiene que corresponder a uno de esos hosts (con cualquier esquema o puerto). Las peticiones *fetch* desde otras webs se siguen rechazando; abrir la aplicación desde otra página (un enlace, un bookmarklet, el menú de compartir) es una navegación normal y funciona.
+Las páginas se descargan con el descargador común de la familia: cada salto de redirección se comprueba contra direcciones privadas y de metadatos, el cuerpo se limita a 5 MB y el HTML pasa por Readability con una alternativa manual.
 
-## La usa Writer's Hoard
+## Conexión con Faustus y el Hoard Hub
 
-Desde el 4 de noviembre de 2026 Writer's Hoard usa esta app por referencia en lugar de llevar una copia: su módulo **Lecturas y enlaces** reenvía sus vistas, archivos de medios y llamadas de herramientas a Links Hoard en marcha, localizada por Hoard Hub, y ofrece arrancarla con el Hub si no lo está. Mantén estables `/api/state`, `/api/links*`, `/api/highlights*`, `/api/watches*`, `/api/video*`, `/api/agent/call` y las rutas de medios: la vista de Writer los usa.
+- Id de app `links`, puerto por defecto 5181; `faustus-plugin.json` es el manifiesto del plugin. Arráncala desde el Hoard Hub o con `npm start`.
+- El puente MCP (`server/mcp.js`) reenvía cada llamada por HTTP a la app en marcha, autenticada con el token de `<carpeta de datos>/mcp-token`; nunca abre la base de datos. `GET /api/agent/tools` devuelve la lista viva de herramientas. Las descripciones acaban con sinónimos en español para que las frases en español encuentren la herramienta correcta.
+- Herramientas por grupos: guardar y leer (`save_link`, `list_links`, `search_links`, `read_link`, `read_link_paragraphs`, `ask_link`, `edit_link`, `tag_link`, `mark_link`, `add_highlight`, `refetch_link`, `delete_link`, `list_tags`, `link_digest`, `resurface`, `reading_plan`, `highlights_to_cards`, `import_video_transcript`); vigías (`watch_*`); mapeo y rastreo de sitios (`map_site`, `crawl_*`); descargas (`media_*`, `site_sessions`, `site_login`, `site_logout`, `read_post`); vídeo (`link_video*`, `video_digest*`, `video_ask`, `video_find`, `video_frame`); escucha (`listen_*`); sonido (`audio_*`).
+- Al asistente se le indica que resuma o cite un enlace solo a partir del texto que devuelve `read_link` y que diga claramente cuándo una descarga está pendiente o ha fallado.
+- Writer's Hoard reenvía sus vistas de lectura y llamadas de herramientas a esta app a través del Hub y ofrece arrancarla si no está en marcha.
+- El manifiesto nombra las skills `read-later-digest` y `web-to-clean-markdown`, visibles en la pestaña Skills del Hub.
 
-## Qué hace
+## Estructura del proyecto
 
-- **Guarda al instante.** Pega una URL (o usa el bookmarklet, «Compartir» desde el móvil una vez instalada como app, o la herramienta `save_link` de un asistente) y se guarda inmediatamente con `fetch_status: pending`. Una cola en segundo plano (2 a la vez) descarga la página, extrae el artículo con Readability y rellena título, autoría, extracto y texto completo; la fila se actualiza sola, sin recargar.
-- **Lee sin distracciones.** El lector muestra el texto extraído con tamaño de letra ajustable, junto a la URL original, el sitio, la autoría y el tiempo de lectura. Selecciona cualquier texto para subrayarlo, con nota opcional.
-- **Organiza.** Etiquetas, favoritos, archivo, leído/no leído. La barra lateral muestra el recuento de etiquetas; la lista también filtra por sitio.
-- **Busca en todo.** Búsqueda de texto completo (SQLite FTS5) en título, descripción, texto extraído, notas y etiquetas. Si el SQLite del sistema no trae FTS5, la aplicación cae automáticamente a una búsqueda `LIKE` y lo indica en Ajustes.
-- **Importa en bloque.** Marcadores HTML de Netscape (lo que exporta cualquier navegador) o una lista de URLs, una por línea. Ambas evitan duplicados con lo que ya tienes.
-- **Resumen semanal.** `GET /api/digest?since=` (y la herramienta MCP `link_digest`) lista lo guardado desde una fecha, agrupado por sitio, con extractos.
-- **Vigía.** La biblioteca también *trae* cosas: sigue un feed RSS/Atom, un repositorio de GitHub (releases, tags o commits — sin token de API, por sus feeds Atom públicos) o una página cualquiera (un diff de texto en cada cambio). Cada uno se comprueba a su intervalo (60 min por defecto, planificador en el propio proceso, `LINKS_WATCHES=0` lo apaga); la primera comprobación es la base, y cada entrada, release o cambio posterior se convierte en una *novedad* y, con `auto_save`, en un enlace guardado con las etiquetas de la vigilancia (origen `watch`), descargado como cualquier otro. Una página que anuncia un feed (`<link rel="alternate" type="application/rss+xml">`) pasa a vigilancia de feed automáticamente. Cada novedad se publica en el bus de la familia como `links.watch.new` (y los cambios de página como `links.watch.changed`), para que una regla del Hoard Hub o el asistente reaccionen: un resumen, una tarjeta, una nota.
-- **Descarga vídeo, audio y fotos.** Dile al asistente «descárgame esto: <enlace>» (o pega el enlace en **Descargas**) y el vídeo, el audio o las fotos acaban en una carpeta de tu disco: YouTube, X, Instagram, TikTok, Audiomack, SoundCloud, Vimeo, Twitch, Reddit, Facebook, Bilibili y cualquier otro sitio que conozca yt-dlp. Ver [Descargas](#descargas).
-- **Subrayados a tarjetas.** Cada subrayado del lector tiene **Enviar a Hypatia** (y la lista, **Enviar todos a Hypatia**); la herramienta `highlights_to_cards` lo hace para un enlace o para todo lo guardado desde una fecha. La tarjeta va por el hub al `cards_add` de Hypatia, en el mazo **Lecturas**: anverso = el texto subrayado, reverso = tu nota y el título del artículo, `source_ref = hoard://links/highlight/<id>`. Un subrayado se envía una vez (`highlights.card_sent_at`; el lector muestra *En Hypatia ✓*); `resend` lo envía otra vez y Hypatia no duplica la tarjeta. Nada se marca como enviado si Hypatia no respondió, y la respuesta dice por qué cuando el hub no está (`hub_down`) o Hypatia no está (`hypatia_unavailable`). Al crear un subrayado se publica `links.highlight.added {highlight_id, link_id}` en el bus de la familia.
-- **Para leer hoy.** La Bandeja se abre con unos pocos enlaces guardados hace tiempo (3 por defecto, de 1 a 10 en Ajustes), y `resurface {count}` responde la misma lista. Candidatos: sin leer desde hace al menos 2 días (primero los más antiguos; pesan más los favoritos, los subrayados y los temas que de verdad lees), y los enlaces leídos hace dos semanas que tienen subrayados, para releerlos; nunca descargas, archivados ni enlaces sin descargar. El mismo enlace no se ofrece dos veces en 14 días (30 si es para releer); la lista del día se guarda, así que no cambia hasta mañana (un enlace que lees sale de ella). Una vez al día, a partir de las 08:00 locales, un evento `digest.item` («Para leer hoy (3): …») va al hub para el resumen de la familia, solo si hay algo que leer y solo se da por enviado cuando el hub lo recogió. `LINKS_RESURFACE=0` o el interruptor de Ajustes apaga la línea diaria.
-- **Instálala como app.** `manifest.webmanifest` declara un `share_target`: una vez instalada en Android, puedes compartir una página desde cualquier app directamente a Links Hoard.
-
-- **Leer en el tiempo que tienes.** Pide a Faustus un `reading_plan` con minutos disponibles, ritmo de lectura y filtros opcionales de etiqueta o sitio. Combina textos completos guardados sin leer que quepan, indica minutos estimados y sobrantes y conserva la biblioteca y las elecciones diarias. [Planes de lectura](docs/READING_PLAN.md).
-
-## Guardar un sitio entero o una sección
-
-El cuadro de añadir enlace tiene el botón **Guardar sitio completo**. Escribe una web o una sección (`https://docs.python.org/3/howto/`), patrones opcionales de inclusión y exclusión (`/3/howto/*`, `**/old/**`, `*.pdf`; `**` cruza carpetas, `*` no) y pulsa **Buscar páginas**: la app lista las URL que encuentra en los sitemaps de `robots.txt`, `sitemap.xml` e índices de sitemaps (también `.gz`) y en los enlaces de la página inicial del mismo dominio, con título cuando la página lo enlaza y una marca en las que ya están en tu biblioteca. Marca las páginas (filtro, marcar o desmarcar las visibles), elige un máximo y etiquetas extra, y **Guardar N páginas** lanza un trabajo en segundo plano con progreso en vivo, **Cancelar** y **Reanudar**. Por defecto solo se mapea la carpeta de la dirección escrita; marca "todo el dominio" para el resto.
-
-Cada página pasa por el mismo extractor que un enlace guardado a mano y queda como enlace normal (origen `import`) con las etiquetas `site:<host>`, `crawl-<id del trabajo>` y las tuyas. Una URL que ya está en la biblioteca no se vuelve a guardar (el enlace existente no se toca), así que el rastreo es idempotente y **Reanudar** solo descarga lo que falta; los trabajos que un reinicio dejó a medias continúan al arrancar (`LINKS_CRAWL_RESUME=0` solo los marca como interrumpidos). Es educado: respeta `robots.txt` (las páginas prohibidas se omiten y se cuentan), un `Crawl-delay` fuerza una petición cada vez con esa pausa y, si no, se espacian 500 ms con 2 a la vez como mucho; solo el mismo dominio, con profundidad (1 por defecto desde una URL inicial) y límite (50 por defecto, 500 como máximo).
-
-Una redirección que sale del sitio (o cae en una ruta que `robots.txt` prohíbe) se omite y se informa (`offsite` / `robots`); los PDF y las imágenes se guardan con su nombre de fichero como título; las páginas ya guardadas u omitidas por robots no gastan el presupuesto de peticiones del trabajo (3 × límite); cancelar o apagar surte efecto al momento aunque haya un `Crawl-delay` largo, la página que se estaba descargando al cancelar no se guarda y **Reanudar** pulsado mientras una cancelación termina vuelve a lanzar el trabajo en cuanto para. Un apagado limpio deja los trabajos en marcha como `interrupted` y continúan al arrancar. `path_prefix` es un límite de sección (`/docs` no incluye `/docs-old`) y admite acentos; la página inicial se descarga tal como se escribió, así que `/guia/` y `/guia` resuelven bien los enlaces relativos. Sitemaps: como mucho 40 peticiones (contando los muertos) y solo cuentan para el límite las URL de la sección, así que una sección que aparece tarde en un sitemap grande se encuentra igual.
-
-El panel lista también los **Rastreos anteriores** (estado, páginas guardadas, fecha, etiqueta) con **Ver**, **Reanudar** y **Quitar**: quitar borra solo el registro del rastreo, nunca los enlaces que guardó; uno en marcha hay que cancelarlo antes.
-
-REST: `POST /api/site/map`, `POST /api/crawls`, `GET /api/crawls`, `GET /api/crawls/:id`, `POST /api/crawls/:id/cancel`, `POST /api/crawls/:id/resume`, `DELETE /api/crawls/:id` (409 si está en marcha). Los trabajos están en la tabla `crawl_jobs`.
-## Descargas
-
-La página **Descargas** (`#/descargas`) y la herramienta `media_download` convierten un enlace en archivos de tu disco. El vídeo y el audio pasan por [yt-dlp](https://github.com/yt-dlp/yt-dlp); las publicaciones de fotos y los carruseles que yt-dlp no puede coger («There is no video in this post») por [gallery-dl](https://github.com/mikf/gallery-dl). Son programas aparte: la aplicación no los incluye.
-
-- **Sitios.** YouTube, X (Twitter), Instagram, TikTok, Audiomack, SoundCloud, Vimeo, Twitch, Reddit, Facebook, Bilibili y otros tienen etiqueta propia; cualquier otra URL también se le pasa a yt-dlp (etiqueta «Otro (yt-dlp)»), que admite más de mil sitios.
-- **Formatos.** `video` (MP4; se prefiere H.264 + AAC y un archivo en otro códec se recodifica con ffmpeg para que se vea en todas partes), `audio` (MP3, la mejor calidad), `image` (gallery-dl) o `auto` (vídeo; si la publicación no tiene vídeo, sus fotos). `quality` del vídeo: `best`, `1080`, `720`, `480`. Una lista de reproducción solo se descarga con `playlist: true`, hasta `max_items` (50 por defecto).
-- **Dónde se guardan.** La carpeta de **Ajustes → Descargas** (`media.dir`), si no `LINKS_MEDIA_DIR`, si no `<usuario>/Downloads/Links Hoard`; `dir` en una llamada la sustituye solo para esa descarga. Los archivos se llaman `título [id].ext`, saneados para Windows; un archivo existente nunca se sobrescribe, y las fotos van a una subcarpeta propia (`autor - pie de foto`, numerada si ya existe). No se deja ningún `.info.json`, miniatura ni otro archivo auxiliar: título, pie de foto, autor, fecha y duración se guardan en la base de datos.
-- **Cola.** Una descarga a la vez, por orden de llegada, con progreso (porcentaje, velocidad, tiempo restante) en memoria y reflejado en la tabla `media_downloads`. Cancelar una descarga en espera la quita sin ejecutarla; cancelar la que corre mata yt-dlp y todo lo que haya lanzado (`taskkill /T /F` en Windows). Al volver a arrancar, las descargas que estaban en marcha pasan a *fallida* («interrumpida al cerrar la app») y las que seguían en espera se encolan de nuevo.
-- **Enlace en la biblioteca.** Con `save_link` (activado por defecto), una descarga terminada guarda también la URL como enlace con la etiqueta `descarga` (origen `download`, tipo vídeo, audio o imagen) y la nota «Descargado en <ruta>»; cuando la propia página no da texto (Instagram, X), el pie de foto pasa a ser el texto del enlace para que `read_link` y la búsqueda lo encuentren. Publica en el bus de la familia los eventos de trabajo canónicos: `links.job.queued`, `started`, `progress` (como mucho cada 3 segundos), `done`, `failed` y `cancelled`, cada uno con `{job_id, title, kind: "download", progress 0..1, gpu: false, eta_s, url, error}` más `source_url`, `platform`, `format`, `media_kind`, `dir`, `files`, `bytes` y `link_id`. El hub ya traduce los nombres antiguos `links.media.*` a estos, así que ya no se envían (una regla escrita contra ellos sigue funcionando a través del hub).
-- **Los vídeos públicos no necesitan cuenta.** Cuando YouTube responde a una descarga con «Sign in to confirm you're not a bot» (a algunas direcciones se lo hace incluso con vídeos públicos), la aplicación repite el intento con los reproductores integrado y web móvil de yt-dlp (`player_client=default,web_embedded,mweb`), que siguen respondiendo, antes de tocar ninguna cookie.
-- **Iniciar sesión con un botón.** Para publicaciones privadas, vídeos con restricción de edad o sitios que exigen cuenta, una descarga fallida (también un digest de vídeo fallido, y **Ajustes → Sesiones para descargar**) muestra **Iniciar sesión con <sitio>**: la aplicación abre tu navegador predeterminado en el ordenador donde corre si es de la familia Chromium (Brave, Chrome, Edge, Vivaldi…; si el predeterminado es Firefox usa el primero de esos que encuentre, y en Ajustes puedes elegir otro), con un perfil propio por navegador (`data/sessions/browser-profile-<navegador>`), en la página de acceso del sitio. Inicias sesión como siempre; la aplicación lee la sesión por el puerto de DevTools del navegador, escribe las cookies de los sitios conocidos en `data/sessions/cookies.txt` y cierra la ventana unos segundos después de que aparezca la cookie de sesión (si la cierras tú también se guarda; «Ya he terminado» guarda al momento). Las descargas prueban entonces, por orden: sin cookies, los reproductores alternativos (YouTube), esa sesión guardada y las cookies de tus navegadores (Firefox, Chrome, Edge, Brave, Chromium, Vivaldi, Opera). «Cerrar sesión» borra las cookies de ese sitio del perfil y del archivo; tu navegador de siempre no se toca y ningún valor de cookie sale del servidor. Sitios con botón: YouTube, X, Instagram, Threads, TikTok, Facebook, Reddit, Twitch, Vimeo, Pinterest, SoundCloud, Bilibili, Patreon. `cookies_browser` sigue fijando un navegador (o `none`), y un `cookies.txt` de Netscape indicado en **Ajustes → Descargas** sustituye todo esto.
-- **Programas necesarios.** yt-dlp para vídeo y audio, gallery-dl para fotos, ffmpeg para unir las pistas y hacer MP3 (el vídeo funciona sin él, como un único archivo). Cada uno se busca en este orden (la búsqueda compartida de la familia): su variable (`HOARD_YTDLP`…, luego `LINKS_YTDLP`…), `<HOARD_HOME>/bin`, la carpeta hermana `../Writers hoard desktop/resources/bin`, el `PATH`, las carpetas habituales del sistema y `python -m yt_dlp` / `python -m gallery_dl` (ffmpeg también por `imageio-ffmpeg`). Se instalan con `python -m pip install -U yt-dlp gallery-dl` y, en Windows, `winget install Gyan.FFmpeg`. La tarjeta **Herramientas** de Descargas (y `media_tools`) muestra lo encontrado con sus versiones, y **Actualizar** ejecuta `yt-dlp -U` / `gallery-dl -U`, o `pip install -U` si funcionan como módulo de Python. Los accesos `.cmd`/`.bat` del `PATH` en Windows se ignoran: usa el `.exe` o apunta la variable a él.
-- **yt-dlp se mantiene al día solo.** Las plataformas cambian y un yt-dlp viejo empieza a fallar (un vídeo de YouTube que responde HTTP 403 es la señal habitual). Antes de descargar, si yt-dlp tiene más de 45 días se actualiza; y si una descarga falla como falla un yt-dlp desactualizado, se actualiza y la descarga se repite una vez, antes de probar las cookies de los navegadores. Como mucho una actualización automática cada 6 horas; el interruptor está en Ajustes → Descargas, que también muestra la última.
-- **Ver y localizar.** La página reproduce los archivos en el sitio (vídeo, audio, imágenes) desde `GET /api/media/:id/file`, que admite peticiones Range, y abre el Explorador con el archivo seleccionado. En el lector, un vídeo guardado (o un enlace de un sitio conocido) tiene un botón **Descargar**.
-- **Servicio de la familia.** Links Hoard es el dueño de las descargas de medios de toda la familia: las demás aplicaciones se las piden por el hub en vez de ejecutar yt-dlp ellas. `media_download` admite además `sections` (`[[inicio_s, fin_s], ...]`, como mucho 10: solo se descargan esas partes, un archivo por parte, con `[part N]` en el nombre si son varias), `max_duration_s` (un vídeo más largo se rechaza antes de descargar nada), `max_height` (limita la resolución; vale la menor entre ella y `quality`) y `dest_dir` (alias de `dir`). `media_info` es la sonda más miniatura, idiomas de subtítulos, id, extractor e `is_live`; `media_subtitles` devuelve los subtítulos de un vídeo como texto con tiempos sin descargarlo (idiomas por orden de preferencia, manuales antes que automáticos); `media_audio_for_asr` devuelve un WAV mono de 16 kHz en `<descargas>/asr/` para transcribir, y nunca guarda un enlace en la biblioteca.
-- **Qué direcciones.** Un enlace de medios debe apuntar a internet público: se rechazan otros esquemas, `localhost`, `*.local`, direcciones IP de este equipo o de una red privada y nombres de apariencia pública que resuelven a una de ellas. `LINKS_ALLOW_PRIVATE_URLS=1` levanta la regla de direcciones para un servidor de tu propia red.
-- **Límites.** La aplicación no descifra contenido con DRM, no inicia sesión por ti y no descarga de sitios que yt-dlp y gallery-dl no sepan leer. Borrar archivos desde la aplicación es definitivo (Node no tiene papelera) y solo ocurre si se pide de forma explícita.
-
-Rutas REST (con la misma protección local que el resto de `/api`):
-
-| Ruta | Uso |
+| Ruta | Contenido |
 | --- | --- |
-| `GET /api/media` | Lista, la más reciente primero (`?status=` un estado, `active` o `finished`; `?limit=`). |
-| `POST /api/media` | Empieza `{ url, format, quality, dir, save_link, playlist, max_items, cookies_browser }`; devuelve la fila en cola (una descarga idéntica en curso se devuelve con `existing: true`). |
-| `GET /api/media/:id` | Una descarga con progreso, archivos y metadatos. |
-| `POST /api/media/:id/cancel` · `retry` | Cancelar (en espera o en marcha) / volver a encolar la misma descarga. |
-| `DELETE /api/media/:id` | Quita el registro; con `?files=1` borra también los archivos descargados. |
-| `GET /api/media/:id/file?i=0` | Envía un archivo producido (admite Range; `&download=1` como adjunto). |
-| `POST /api/media/:id/reveal` | Abre el gestor de archivos sobre el archivo (`explorer /select,` en Windows). |
-| `POST /api/media/probe` | Qué hay tras un enlace (título, duración, alturas, lista o publicación de fotos) sin descargar. |
-| `GET /api/media/tools` · `POST /api/media/tools/update` | Programas encontrados con sus versiones / actualizarlos. |
-| `GET /api/media/settings` · `PUT /api/media/settings` | Carpeta de descargas y archivo de cookies. |
-| `GET /api/sessions` | Los sitios con botón de inicio de sesión, si cada uno tiene sesión, el navegador encontrado y la ventana abierta (sin valores de cookies). |
-| `POST /api/posts/read` | `{ url }`: un post (X, Instagram, Threads, TikTok, Reddit o cualquier página) como texto: autor, texto, descripción, tarjeta y enlaces (los acortados, resueltos). Solo lee. Usa la sesión iniciada; si el sitio rechaza el navegador sin ventana, lo lee con gallery-dl y la misma sesión. En la app: **Leer post**, junto a **Guardar**, lo muestra y ofrece guardarlo. |
-| `PUT /api/sessions/settings` | `{ browser }`: el navegador de la ventana de inicio de sesión (`auto` = el predeterminado). |
-| `POST /api/sessions/:site/login` · `POST /api/sessions/finish` · `POST /api/sessions/cancel` · `DELETE /api/sessions/:site` | Abrir la ventana / guardar ya y cerrarla / cerrarla / cerrar la sesión de la aplicación en un sitio. |
-| `POST /api/highlights/:id/to-cards` | `{ deck? }`: enviar un subrayado a Hypatia (responde 200 con `{ok, status, deck, sent, skipped}`). |
-| `POST /api/links/:id/cards` · `POST /api/cards/from-highlights` | `{ deck?, resend? }` para un enlace / `{ link_id?, since?, deck?, resend? }` para todo lo que aún no fue. |
-| `GET /api/resurface` | `?count=`: la lista de «Para leer hoy», cada elemento con su `reason`. |
-| `GET /api/settings` · `POST /api/settings` | `{ resurface: { digest, count } }`. |
+| `server/` | Servidor Node: API, extracción, vigías, rastreos, descargas, vídeo, escucha, puente MCP |
+| `client/` | Interfaz web (Vite) |
+| `sentidos/` | Motor de escucha en Python |
+| `docs/` | Referencias de funciones |
+| `scripts/` | Scripts auxiliares |
+| `tests/` | Pruebas |
+| `data/` | Base de datos local y token (ignorado por git) |
+| `faustus-plugin.json` | Manifiesto del plugin de Faustus |
 
-## Digest de vídeo (ver un vídeo por un asistente)
-
-Pega un enlace (un tweet con vídeo, YouTube, un reel) en la página **Vídeos**, o que un asistente llame a `video_digest`: la app lo descarga, lo transcribe, recorre la imagen entera, lee el texto en pantalla con OCR y escribe capítulos y resumen con los modelos locales del Hub, y deja un dossier por capas en `<datos>/video/<id del enlace>/digest/`: `card.md` (fuente, texto de la publicación, resumen, puntos clave, respuesta a tu foco y lo que cuesta cada capa), `index.md` (capítulos con lo que se dice y se ve), `visual.md` (cada plano con su texto en pantalla literal), `transcript.md`, `digest.md`, un mosaico 4×4 con tiempos y un fotograma por plano distinto. Un asistente lee la ficha y el índice por unos pocos miles de tokens en vez de cientos de miles en fotogramas, y luego pregunta (`video_ask`, con citas literales comprobadas y minuto), busca (`video_find`) o saca el fotograma exacto de un instante (`video_frame`). Lo literal y lo generado van siempre marcados aparte. Desde una consola: `node scripts/digest.mjs <url> --focus "…"`. Detalle, ajustes y límites: [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
-
-## Sentidos (el oído de la app)
-
-La página **Sentidos** y las herramientas MCP `audio_*` escuchan un sonido en este equipo con dos modelos locales (CLAP y AudioSet, solo CPU, unos 1,1 GB que se descargan una vez, en un motor residente que arranca cuando hace falta y se para si no se usa): `audio_describe` (a qué suena, con z calibrada y veredicto por etiqueta), `audio_match` (¿suena a lo que describes?), `audio_find` (en qué momento de un archivo suena algo; sin archivo busca en las bandas sonoras de los digests de vídeo, y con `deep` en los archivos descargados), `audio_timeline` (música, efectos y ambiente por secciones, volumen, caídas y pulso), `audio_measure` (volumen, picos y ruido, sin modelos), `audio_realness` (grabado o sintético, calibración débil), `audio_sheet` (un PNG con espectrograma, onda y eventos) y `audio_status` (instalar, arrancar, parar). La fuente es la ruta `path` de un archivo, el `id` de un enlace guardado o una `url`. Un digest de vídeo suma una capa **«qué suena»** (`sound.md`, nivel `sound` de `video_digest_read`, se busca con `video_find` y `video_ask` puede citarla) cuando el motor está listo. Se prepara desde la propia página (**Preparar Sentidos**: entorno de Python propio, paquetes y modelos, en segundo plano). El motor es una bifurcación separada de earshot 0.4.0 (MIT). Detalle, límites y cómo leer un veredicto: [docs/SENTIDOS.md](docs/SENTIDOS.md).
-
-## Normalización de URL (la clave de deduplicación)
-
-Guardar es idempotente sobre una forma normalizada de la URL (la regla compartida de la familia, `normalizeUrl` de `hoard-commons/web.js`): se eliminan `utm_*`, `fbclid`, `gclid`, `mc_*` y parámetros de seguimiento similares, se quita el fragmento, el host se pone en minúsculas, se quitan los puertos por defecto y la barra final (la raíz sola va sin barra), se ordena la consulta y un enlace de empleo de LinkedIn se queda solo con su id. Se acepta `example.com/pagina` sin esquema (recibe `https://`). Al abrir una biblioteca antigua, los enlaces guardados se reasignan una vez a esta forma. Guardar una página ya guardada (aunque cambien los parámetros de seguimiento) devuelve el enlace existente con `existing: true` en lugar de duplicarlo.
-
-## Cómo se descargan las páginas y los feeds
-
-Las páginas guardadas, las vigilancias y los títulos oEmbed usan el descargador compartido de la familia (`hoard-commons/web.js`): se comprueba la dirección de cada redirección (se rechazan las de bucle local, redes privadas, enlace local y metadatos de la nube salvo con `LINKS_ALLOW_PRIVATE_URLS=1`), la codificación sale de la cabecera o de la página, el cuerpo tiene tope (5 MB las páginas, 3 MB los feeds) y una página de Cloudflare, CAPTCHA o inicio de sesión se declara descarga fallida («blocked: …») en vez de guardarse como contenido. Una **vigilancia de página** compara el texto sin relojes, líneas tipo «hace 5 minutos» y ruido parecido, nunca cuenta como cambio una página bloqueada o demasiado corta (menos de unas 40 palabras) y devuelve el `ETag` / `Last-Modified` guardado para que una página sin cambios conteste 304. Las vigilancias leen las direcciones públicas por el hub de la familia cuando está en marcha (un único descargador educado para todas las aplicaciones) y directamente si no.
-
-## Conectar una IA
-
-En **Ajustes** (o mediante `faustus-plugin.json`) un asistente configurado para servidores MCP locales por stdio puede conectarse usando `server/mcp.js`, `LINKS_URL` y `LINKS_TOKEN_FILE`. El puente nunca abre la base de datos: cada llamada se envía por HTTP a la aplicación en marcha, autenticada con un token aleatorio en `<datos>/mcp-token` que se crea una vez y se conserva, así que un puente que ya esté en marcha sigue funcionando cuando la aplicación se reinicia.
-
-Herramientas:
-
-| Herramienta | Uso |
-| --- | --- |
-| `save_link` | Guardar una URL (idempotente); espera hasta 10 s la descarga para informar del título/extracto reales. |
-| `list_links` | Listar por estado (no leído/leído/archivado/todo), etiqueta, sitio, desde. |
-| `search_links` | Búsqueda de texto completo. |
-| `read_link` | Leer el texto extraído, paginado por caracteres; incluye subrayados. |
-| `read_link_paragraphs` | Párrafos completos paginados por índice, con enlaces al lector y versión del texto. |
-| `ask_link` | Preguntar al modelo del Hub sobre el texto guardado; frases con citas comprobadas y enlaces al párrafo. |
-| `import_video_transcript` | Importar subtítulos disponibles de un vídeo de YouTube guardado para leerlos, buscarlos y citarlos. Usa el mismo camino de subtítulos que `media_subtitles` (yt-dlp, buscado como las herramientas de descarga); no descarga el vídeo. |
-| `tag_link` | Añadir/quitar etiquetas. |
-| `edit_link` | Editar solo el título, las notas o las etiquetas indicadas; las diferencias de etiquetas conservan las demás. |
-| `mark_link` | Cambiar leído/no leído/archivado/favorito; repetir el mismo estado de lectura conserva la fecha original. |
-| `add_highlight` | Guardar una cita subrayada con nota. |
-| `link_digest` | Lo guardado desde una fecha, agrupado por sitio. |
-| `refetch_link` | Volver a descargar y extraer. |
-| `delete_link` | Borrar permanentemente (destructivo; confirmar antes). |
-| `watch_add` | Seguir un feed, un repositorio de GitHub o una página (tipo autodetectado; intervalo, etiquetas, auto_save), o las entradas de una página de lista sin RSS (`kind: list`, `selector`, `pages`: se detecta la lista una vez, se sigue la paginación y se para en la primera página sin nada nuevo). |
-| `watch_list_preview` | Qué leería un vigía de lista en una página: entradas, selector que se guardaría y páginas recorridas, sin guardar nada (botón **Probar** en Vigía, `POST /api/watches/list-preview`). |
-| `watch_list` | Las vigilancias con su última comprobación, último error y novedades. |
-| `watch_items` | Lo que han traído las vigilancias (no vistas primero; desde una fecha; por vigilancia). |
-| `watch_check` | Comprobar una vigilancia (o todas las pendientes) ahora. |
-| `watch_dismiss` | Marcar una novedad como vista. |
-| `watch_remove` | Dejar de seguir (las novedades y los enlaces guardados se quedan). |
-| `map_site` | Lista las páginas de una web o sección (sitemaps + enlaces de la página inicial, patrones include/exclude, path_prefix); no guarda nada. |
-| `crawl_site` | Guarda una web o sección como enlaces en un trabajo en segundo plano (limit, depth, patrones o lista `urls`; omite lo ya guardado y respeta robots.txt). |
-| `crawl_status` | Progreso de los rastreos; `action` cancel o resume. |
-| `crawl_delete` | Quita del historial un rastreo terminado o cancelado (sus enlaces se quedan); se niega si está en marcha. |
-| `highlights_to_cards` | Enviar subrayados (de un enlace, o todos los no enviados / desde una fecha) a Hypatia como tarjetas en el mazo «Lecturas» (`link_id`, `url`, `since`, `deck`, `resend`); informa de `status` (`ok`, `nothing_new`, `hub_down`, `hypatia_unavailable`, `hypatia_error`, `unknown_link`). |
-| `resurface` | Qué leer hoy entre lo guardado sin leer (`count`, 3 por defecto); la misma lista todo el día, nunca el mismo enlace dos veces en 14 días. |
-| `reading_plan` | Textos completos sin leer para `minutes`, con `words_per_minute` (200 por defecto), `max_items` (5), filtros opcionales `tag` / `site`; estimaciones sin cambiar estado. |
-| `list_tags` | Todas las etiquetas en uso, con recuento. |
-| `media_download` | Descargar el vídeo, el audio o las fotos de un enlace; espera y devuelve los archivos con ruta absoluta y tamaño (`format`, `quality`, `max_height`, `sections`, `max_duration_s`, `dir` / `dest_dir`, `save_link`, `playlist`, `wait`, `timeout_s`). Una descarga terminada lista además sus archivos en `deliverables`, que Faustus convierte en enlaces de descarga en el chat (diálogo de guardar en el escritorio, navegador o móvil). |
-| `media_status` | Progreso y resultado de una descarga o la lista reciente. |
-| `media_cancel` | Cancelar una descarga en espera o en marcha. |
-| `media_retry` | Volver a encolar una descarga fallida o cancelada. |
-| `media_probe` | Título, duración, alturas disponibles, lista o publicación de fotos — sin descargar. |
-| `media_info` | La sonda más `id`, `extractor`, `thumbnail`, `subtitle_langs` e `is_live` (la llamada de información de la familia). |
-| `media_subtitles` | Subtítulos de un vídeo como texto y líneas con tiempo (`langs`, manuales antes que automáticos) — sin descargar. |
-| `media_audio_for_asr` | El audio de un enlace como WAV mono de 16 kHz para transcribir (`sections`, `max_duration_s`, `wait`, `timeout_s`). |
-| `media_tools` | Si se encontraron yt-dlp, gallery-dl y ffmpeg, con versiones; `update: true` los actualiza. |
-| `site_sessions` | En qué sitios tiene la aplicación una sesión iniciada, el navegador que usa y la ventana de inicio de sesión si está abierta. |
-| `site_login` | Abre la ventana de inicio de sesión de un sitio en el ordenador donde corre la aplicación (`site`; `finish` guarda ya, `cancel` la cierra); inicia sesión el usuario, nunca el asistente. |
-| `site_logout` | Olvida la sesión de la aplicación en un sitio. |
-| `media_delete` | Quitar el registro de una descarga; sus archivos solo con `delete_files` y `confirm`. |
-| `video_digest` | Ver un vídeo en local y devolver un digest de texto por capas (`url` o `id`, `path`, `focus`, `level`, `force`, `wait`, `timeout_s`). Ver [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md). |
-| `video_digest_read` | Una capa (`brief`, `card`, `index`, `visual`, `transcript`, `full`) o un tramo (`from`, `to`) de un digest. |
-| `video_ask` | Una pregunta respondida desde la transcripción y el texto en pantalla, con citas literales comprobadas y minuto. |
-| `video_find` | Buscar palabras dichas y texto en pantalla en uno o todos los vídeos digeridos. |
-| `video_frame` | El fotograma exacto de un instante (`t`, `width`): ruta, tamaño y coste en tokens. |
-| `video_digests` | Los últimos digests y su estado. |
-
-Son 65 herramientas en total. `GET /api/agent/tools` siempre refleja la lista real. Las descripciones terminan con una línea `Sinónimos:` en español, para que la forma de hablar de un usuario («guarda esto», «resumen de la semana») encuentre la herramienta correcta.
-
-El asistente tiene instrucciones de resumir o citar un enlace solo a partir del texto que devuelve `read_link`, nunca solo del título, y de decir con claridad cuándo una descarga sigue pendiente o falló en lugar de inventar un resumen.
-
-## Datos y límites
-
-- `data/links-hoard.db`: enlaces, subrayados (y cuáles fueron a Hypatia), vigilancias, la lista de descargas y ajustes, SQLite con WAL. Los archivos descargados no están en la carpeta de datos: están en la carpeta de descargas.
-- `data/mcp-token`: credencial local creada al iniciar; no se publica ni se incluye en ningún otro sitio.
-- Descarga: 15 s de tiempo límite, cabecera User-Agent de navegador, 5 MB de tope. El HTML pasa por `linkedom` + `@mozilla/readability`, con una alternativa manual (título + meta descripción + cuerpo sin etiquetas) cuando Readability no encuentra nada útil. Antes de extraer, se elimina el relleno habitual (infoboxes, navboxes, barras laterales, marcas de referencia, tablas de contenidos, enlaces de «editar», `<nav>`/`<aside>`), y el HTML restante se convierte a texto bloque a bloque (salto de línea tras cada párrafo/título/elemento de lista/fila de tabla, espacio entre celdas), para que el texto nunca quede pegado entre celdas o bloques como ocurriría con `textContent` a secas. El extracto elige el primer párrafo real (≥ 80 caracteres con puntuación de frase) en lugar de lo primero que aparezca en el marcado, como un infobox. PDF e imágenes se registran con un título derivado del nombre de archivo (sin OCR ni renderizado). YouTube/Vimeo obtienen un título por oEmbed sin necesitar clave de API. Un enlace guardado antes de esta mejora en la extracción se puede corregir con **refetch_link** / `POST /api/links/:id/refetch` (o el botón «Reintentar descarga» del lector): vuelve a ejecutar la extracción actual sobre la misma URL y sobrescribe el título, el extracto y el texto guardados.
-- Búsqueda: FTS5 cuando el SQLite del sistema lo soporta (se comprueba en cada arranque); si no, una alternativa `LIKE` sobre los mismos campos, ambas reflejadas en `GET /api/state`.
-
-## Verificación
+## Desarrollo
 
 ```sh
 npm test
 npm run build
 ```
 
-Las pruebas usan directorios de datos temporales y un servidor HTTP local para las páginas de ejemplo: nada toca tus datos reales ni la red. Un hub falso (`tests/fake-hub.js`) hace de hub de la familia: anota los eventos y responde al `cards_add` por el proxy. Las descargas se prueban con scripts pequeños que imitan yt-dlp, gallery-dl y ffmpeg (`tests/media-fakes.js`, elegidos con `LINKS_YTDLP=node:<script>`), así que no hace falta ningún sitio real ni ningún programa. Cubren normalización de URL (y la reasignación única de una biblioteca antigua), el descargador de páginas compartido (codificaciones, PDF e imágenes, páginas de desafío, el tope de bytes, la comprobación de direcciones), las vigilancias (ETag, páginas bloqueadas, el camino por el hub, una referencia silenciosa tras actualizar), el servicio de medios de la familia (secciones, límites, `media_info`, `media_subtitles`, `media_audio_for_asr`, direcciones privadas), el punto de entrada real (reiniciar conserva el token, SIGTERM sale con 0), extracción con Readability sobre una página de ejemplo, idempotencia al guardar, búsqueda de texto completo, el resumen, subrayados, análisis de importación de marcadores/listas de URL, autenticación del token del asistente, un recorrido completo de la API, para la familia (subrayados a tarjetas: una vez cada uno, `source_ref`, Hypatia antigua, hub caído, lotes de 50; el evento `links.highlight.added`; las elecciones de «Para leer hoy» con su clasificación, enfriamiento y una lista por día, y su resumen diario; los eventos de trabajo canónicos) y, para las descargas: detección de plataforma, argumentos por formato y calidad, lectura del progreso, la cola (orden, cancelación de una descarga en espera y de la que corre con su árbol de procesos), el relevo a gallery-dl, las cookies de los navegadores, los reproductores alternativos ante la comprobación de bot, la ventana de inicio de sesión con un navegador falso (`tests/fake-browser.js`: guardar, cerrarla a mano, la primera ventana de un perfil nuevo que se cierra sola, cerrar sesión), el enlace guardado con su nota, que nunca se sobrescribe nada, el envío de archivos con Range, las rutas REST y las herramientas MCP.
+Las pruebas usan carpetas de datos temporales, un servidor HTTP local para los casos, un hub simulado y scripts simulados de yt-dlp, gallery-dl y ffmpeg. Las notas de diseño están en [DESIGN.md](DESIGN.md); los objetivos y problemas conocidos, en [docs/OBJETIVOS.md](docs/OBJETIVOS.md) y [docs/REVISAR.md](docs/REVISAR.md).
 
-Sentidos se prueba con su motor de Python sustituido por una función (`setSentidosRunner`): las fuentes, las ocho herramientas, la capa de sonido de un digest (construida, buscada, consultada y conservada si el motor falla), las rutas y los errores de instalación. El motor real se comprueba a mano con archivos de audio (ver [docs/SENTIDOS.md](docs/SENTIDOS.md)).
-
-Los objetivos pendientes y los fallos conocidos están en [docs/OBJETIVOS.md](docs/OBJETIVOS.md) y [docs/REVISAR.md](docs/REVISAR.md).
-
-Diseño y decisiones: [`DESIGN.md`](DESIGN.md).
+Datos: `data/links-hoard.db` (SQLite con WAL) guarda enlaces, subrayados, vigías, la lista de descargas y los ajustes; los archivos descargados viven en la carpeta de descargas. Véase `LICENSE`.

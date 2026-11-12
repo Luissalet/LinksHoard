@@ -5,7 +5,7 @@ const notFound = (res, what = "No existe.") => res.status(404).json({ error: wha
 const truthy = (v) => v === true || v === "1" || v === "true";
 
 export function installDigestRoutes(app) {
-  // Start (or reuse) a digest. Body: { url? | id?, path?, focus?, force?, redo_media?, language? }. 202 while it runs.
+  // Start (or reuse) a digest. Body: { url? | id?, path?, focus?, force?, redo_media?, language?, sound? }. 202 while it runs.
   app.post("/api/video-digests", (req, res, next) => {
     try {
       const out = digest.requestDigest(req.body || {});
@@ -30,7 +30,8 @@ export function installDigestRoutes(app) {
   app.post("/api/links/:id/digest", (req, res, next) => {
     try {
       const b = req.body || {};
-      const out = digest.requestDigest({ id: req.params.id, focus: b.focus || undefined, path: b.path || undefined, force: truthy(b.force), redo_media: truthy(b.redo_media) });
+      const out = digest.requestDigest({ id: req.params.id, focus: b.focus || undefined, path: b.path || undefined, force: truthy(b.force), redo_media: truthy(b.redo_media),
+        sound: b.sound === undefined ? undefined : truthy(b.sound) });
       res.status(["queued", "running"].includes(out.status) ? 202 : 200).json(out);
     } catch (e) { next(e); }
   });

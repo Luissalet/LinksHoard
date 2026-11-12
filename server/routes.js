@@ -16,12 +16,20 @@ import { videoSummary } from "./videoinsight.js";
 import { articleSource } from "./article-source.js";
 import { askLink } from "./article-questions.js";
 import { resurface, resurfaceSettings, setResurfaceSettings } from "./resurface.js";
+import { digestBusy } from "./videodigest.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe." });
 
+/** The background work in progress, for /api/health: a supervisor reads it before restarting the app. */
+const busy = () => {
+  const digest = digestBusy();
+  return { digest, working: Boolean(digest.running) || digest.queued > 0 };
+};
+
 export function installRoutes(app, { version, dataDirConfigured }) {
   app.get("/api/health", (req, res) => {
-    res.json({ service: "links-hoard", version, dataDirConfigured, hoard_link: family.healthBlock() });
+    // busy: the work in progress, so a supervisor (the Hub) does not restart the app in the middle of it
+    res.json({ service: "links-hoard", version, dataDirConfigured, busy: busy(), hoard_link: family.healthBlock() });
   });
 
   app.get("/api/state", (req, res) => {

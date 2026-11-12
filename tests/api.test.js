@@ -15,7 +15,10 @@ after(async () => {
 test("health and state bootstrap", async () => {
   const health = await s.call("GET", "/api/health");
   assert.equal(health.status, 200);
-  assert.deepEqual(Object.keys(health.body).sort(), ["dataDirConfigured", "hoard_link", "service", "version"]);
+  assert.deepEqual(Object.keys(health.body).sort(), ["busy", "dataDirConfigured", "hoard_link", "service", "version"]);
+  // a supervisor reads busy before restarting the app: nothing is running on a fresh server
+  assert.equal(health.body.busy.working, false);
+  assert.equal(health.body.busy.digest.running, null);
   assert.equal(typeof health.body.hoard_link.events, "boolean");
   assert.equal(health.body.service, "links-hoard");
   const state = await s.call("GET", "/api/state");

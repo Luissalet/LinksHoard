@@ -263,7 +263,7 @@ const command = (browser) => (browser.path.startsWith("node:") ? { cmd: process.
 // talking to the browser (Chrome DevTools Protocol over the WebSocket Node has built in)
 // ---------------------------------------------------------------------------
 
-function cdpConnect(url, { timeoutMs = 8000 } = {}) {
+function cdpConnect(url, { timeoutMs = 8000, callTimeoutMs = 15000 } = {}) {
   return new Promise((resolve, reject) => {
     let ws;
     try { ws = new WebSocket(url); } catch (error) { reject(error); return; }
@@ -274,10 +274,10 @@ function cdpConnect(url, { timeoutMs = 8000 } = {}) {
     ws.onopen = () => {
       clearTimeout(timer);
       resolve({
-        send(method, params = {}, sessionId) {
+        send(method, params = {}, sessionId, { timeoutMs: callMs = callTimeoutMs } = {}) {
           return new Promise((res, rej) => {
             const id = ++seq;
-            const t = setTimeout(() => { if (pending.delete(id)) rej(new Error(`${method}: sin respuesta del navegador.`)); }, 15000);
+            const t = setTimeout(() => { if (pending.delete(id)) rej(new Error(`${method}: sin respuesta del navegador.`)); }, callMs);
             pending.set(id, { resolve: (v) => { clearTimeout(t); res(v); }, reject: (e) => { clearTimeout(t); rej(e); } });
             ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
           });

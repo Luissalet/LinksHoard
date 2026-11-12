@@ -66,3 +66,37 @@ test("gallery-dl reading needs the session and the tool, and reads the post meta
   assert.equal(out.author, "ann");
   assert.deepEqual(out.links.map((l) => l.href), ["https://github.com/x/y"]);
 });
+
+test("a navigation that never answers does not lose the post: the DOM is read while the page loads", async () => {
+  // Page.navigate only answers on the load event, and a reel whose video streams forever never fires it
+  const calls = [];
+  const c = {
+    async send(method, params, _session, opts) {
+      calls.push({ method, opts });
+      if (method === "Target.createTarget") return { targetId: "t1" };
+      if (method === "Target.attachToTarget") return { sessionId: "s1" };
+      if (method === "Page.navigate") throw new Error("Page.navigate: sin respuesta del navegador.");
+      if (method === "Runtime.evaluate") return { result: { value: { text: "Un reel con su texto", author: "francesscc.ia", links: [] } } };
+      return {};
+    },
+  };
+  const out = await readPost({ url: "https://www.instagram.com/reel/DfkzV84OHhX/" },
+    { headless: (fn) => fn("ws://x"), cdp: (_ws, fn) => fn(c), gallery: async () => null, resolver: async (h) => h });
+  assert.equal(out.text, "Un reel con su texto");
+  assert.equal(out.via, "browser");
+  const nav = calls.find((x) => x.method === "Page.navigate");
+  assert.ok(nav.opts?.timeoutMs > 0 && nav.opts.timeoutMs <= 15000, "the navigation is bounded, not left to the 15 s default");
+});
+
+test("when the browser cannot open at all, the signed-in gallery-dl reading is used", async () => {
+  const b = { headless: async () => { throw new Error("El navegador no responde."); }, gallery: async () => ({ text: "Texto del reel", author: "ann", links: [], via: "gallery-dl" }) };
+  const out = await readPost({ url: "https://www.instagram.com/reel/DfkQ_GmBGrW/" }, b);
+  assert.equal(out.via, "gallery-dl");
+  assert.equal(out.text, "Texto del reel");
+});
+
+test("with no browser and no session the error says what failed", async () => {
+  const b = { headless: async () => { throw new Error("El navegador no responde."); }, gallery: async () => null };
+  await assert.rejects(readPost({ url: "https://www.instagram.com/reel/DfkQ_GmBGrW/" }, b),
+    (e) => e instanceof PostError && e.code === "TIMEOUT" && /navegador falló/.test(e.message));
+});

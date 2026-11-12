@@ -593,12 +593,13 @@ export const TOOLS = [
       level: z.enum(["brief", "card", "index", "visual", "transcript", "full", "none"]).default("brief"),
       force: z.boolean().default(false), redo_media: z.boolean().default(false).describe("With force: also download and transcribe again"),
       language: z.string().trim().max(10).optional().describe("Spoken language hint for speech to text (es, en…)"),
+      sound: z.boolean().optional().describe("false skips the soundtrack layer (the slowest step) for this digest; the setting decides by default"),
       wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(1800).default(600),
       max_chars: z.number().int().min(1000).max(400000).default(60000),
     }), { idempotentHint: true, openWorldHint: true },
     async (a) => {
       if (!a.url && !a.id) fail("Indica url o id.");
-      const started = digest.requestDigest({ url: a.url, id: a.id, path: a.path, focus: a.focus, force: a.force, redo_media: a.redo_media, language: a.language });
+      const started = digest.requestDigest({ url: a.url, id: a.id, path: a.path, focus: a.focus, force: a.force, redo_media: a.redo_media, language: a.language, sound: a.sound });
       if (a.wait && ["queued", "running"].includes(started.status)) await digest.waitDigest(started.link_id, a.timeout_s * 1000);
       return digest.digestView(started.link_id, { level: a.level === "none" ? null : a.level, maxChars: a.max_chars });
     }),

@@ -14,13 +14,20 @@ export class PostError extends Error {
 }
 
 const WAIT_MS = () => Number(process.env.LINKS_POST_WAIT_MS) || 20000;
+// How long Page.navigate may take to answer. It resolves on the load event, and a page with a video that streams forever
+// (an Instagram reel) never fires it: the navigation is not awaited, only bounded, and the DOM is read while it loads.
+const NAVIGATE_MS = () => Number(process.env.LINKS_POST_NAVIGATE_MS) || 5000;
+// A page whose picture is there but whose caption is still rendering: after this long what is in the DOM is what a reader sees.
+const SETTLE_MS = () => Number(process.env.LINKS_POST_SETTLE_MS) || 6000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** The script run in the page: returns null while it is not ready, else what a reader sees. Kept as a string (runs in the browser). */
-export const EXTRACT = String.raw`(() => {
+/** The script run in the page: returns null while it is not ready, else what a reader sees. Kept as a string (runs in the browser).
+ *  settleMs is how long the page is given to render its text before what is in the DOM is taken as final. */
+export const extractScript = (settleMs) => String.raw`(() => {
   const meta = (p) => document.querySelector('meta[property="' + p + '"],meta[name="' + p + '"]')?.content || "";
   const host = location.hostname.replace(/^www\./, "");
   const body = (document.body?.innerText || "");
+  const settled = performance.now() > ${Number(settleMs) || 0};
   if (location.protocol === "chrome-error:" || /^HTTP ERROR \d{3}/m.test(body) || /^Access to .* was denied/m.test(body)) {
     return { error: (body.match(/HTTP ERROR \d{3}/) || ["la página no cargó"])[0] };
   }
@@ -33,25 +40,25 @@ export const EXTRACT = String.raw`(() => {
     const art = arts.find((a) => id && a.querySelector('a[href*="/status/' + id + '"]')) || arts[0];
     if (!art) {
       if (/\/i\/flow\//.test(location.pathname)) return { wall: true };
-      const waited = performance.now() > 9000;
-      return document.readyState === "complete" && waited && wall.test(body) ? { wall: true } : null;
+      return settled && wall.test(body) ? { wall: true } : null;
     }
     const text = [...art.querySelectorAll('[data-testid="tweetText"]')].map((n) => n.innerText).join("\n\n");
     const author = (art.querySelector('[data-testid="User-Name"]')?.innerText || "").replace(/\n/g, " ");
     const card = art.querySelector('[data-testid="card.wrapper"]');
     return { text, author, links: links(art), card: card ? card.innerText.slice(0, 500) : "", title: document.title, description: meta("og:description") };
   }
-  if (document.readyState !== "complete") return null;
   if (/instagram\.com$/.test(host)) {
     const art = document.querySelector("article") || document.querySelector("main");
     const caption = art?.querySelector("h1")?.innerText || "";
     const desc = meta("og:description");
-    if (!caption && !desc) return wall.test(body) ? { wall: true } : null;
+    // the caption is rendered after the picture: give it a moment, then take what the page has (never wait for "complete")
+    if (!caption && !(settled && desc)) return settled && wall.test(body) ? { wall: true } : null;
     return { text: caption || desc, author: meta("og:title"), links: links(art), title: document.title, description: desc };
   }
   const main = document.querySelector("article") || document.querySelector("main") || document.body;
   const text = (main?.innerText || "").slice(0, 6000);
-  if (!text && !meta("og:description")) return null;
+  if (!text && !meta("og:description")) return settled && wall.test(body) ? { wall: true } : null;
+  if (!settled && text.length < 200 && !meta("og:description")) return null;
   return { text, author: meta("og:site_name") || meta("author"), links: links(main).slice(0, 80), title: meta("og:title") || document.title, description: meta("og:description") };
 })()`;
 
@@ -100,15 +107,19 @@ export async function readPost(input = {}, { headless = withHeadless, cdp = with
   if (!/^https?:\/\//i.test(url)) throw new PostError("Hace falta la URL completa del post.", { code: "BAD_URL" });
   const site = siteForUrl(url);
   const session = site ? sitesView().find((s) => s.id === site.id) : null;
+  let browserFailed = null;
   const got = await headless((ws) => cdp(ws, async (c) => {
     const { targetId } = await c.send("Target.createTarget", { url: "about:blank" });
     try {
       const { sessionId } = await c.send("Target.attachToTarget", { targetId, flatten: true });
-      await c.send("Page.navigate", { url }, sessionId);
+      // Page.navigate answers on the load event, and a reel whose video streams forever never fires it: the navigation is
+      // bounded and its failure is not fatal, because the DOM is read while the page is still loading.
+      await c.send("Page.navigate", { url }, sessionId, { timeoutMs: NAVIGATE_MS() }).catch(() => null);
+      const script = extractScript(SETTLE_MS());
       const end = Date.now() + WAIT_MS();
       while (Date.now() < end) {
         await sleep(700);
-        const r = await c.send("Runtime.evaluate", { expression: EXTRACT, returnByValue: true }, sessionId).catch(() => null);
+        const r = await c.send("Runtime.evaluate", { expression: script, returnByValue: true }, sessionId).catch(() => null);
         const v = r?.result?.value;
         if (v) return v;
       }
@@ -116,17 +127,22 @@ export async function readPost(input = {}, { headless = withHeadless, cdp = with
     } finally {
       await c.send("Target.closeTarget", { targetId }).catch(() => {});
     }
-  }));
+  })).catch((e) => { browserFailed = e; return null; });
   let page = got;
+  // The browser is the first reader; when it cannot even open (no window, a profile another run holds, a navigation that
+  // never answers) the post is read from the same signed-in session through gallery-dl, the way the digest reads it.
   if ((!page || page.wall || page.error) && site && ["x", "instagram", "threads", "tiktok"].includes(site.id)) {
     const viaGallery = await gallery(url).catch(() => null);
     if (viaGallery) page = viaGallery;
   }
-  return finish(url, site, session, page, resolver);
+  return finish(url, site, session, page, resolver, browserFailed);
 }
 
-async function finish(url, site, session, got, resolver) {
-  if (!got) throw new PostError("La página no mostró el post a tiempo.", { status: 504, code: "TIMEOUT", site: site?.id || null });
+async function finish(url, site, session, got, resolver, browserFailed = null) {
+  if (!got) {
+    const why = browserFailed ? ` El navegador falló: ${String(browserFailed.message || browserFailed).slice(0, 200)}` : "";
+    throw new PostError(`La página no mostró el post a tiempo.${why}`, { status: 504, code: "TIMEOUT", site: site?.id || null });
+  }
   if (got.error) {
     throw new PostError(`${site?.label || "La página"} no dejó leer el post (${got.error}).`, { status: 502, code: "REFUSED", site: site?.id || null });
   }

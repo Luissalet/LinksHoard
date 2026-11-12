@@ -475,6 +475,7 @@ async function summarize(m, { lang, focus, signal }) {
 const queue = [];
 const pending = new Map(); // linkId -> { force, focus, path, language }
 let current = null;
+let currentId = null; // the link whose digest is running, for digestBusy()
 let abort = new AbortController();
 let stopping = false;
 let idleWaiters = [];
@@ -483,7 +484,8 @@ function pump() {
   if (current || stopping) return;
   const id = queue.shift();
   if (!id) { const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); return; }
-  current = runDigest(id).catch(() => {}).finally(() => { current = null; pump(); });
+  currentId = id;
+  current = runDigest(id).catch(() => {}).finally(() => { current = null; currentId = null; pump(); });
 }
 
 function enqueue(id) {
@@ -495,6 +497,14 @@ function enqueue(id) {
 export function waitDigestIdle(timeoutMs = 60_000) {
   if (!current && !queue.length) return Promise.resolve();
   return new Promise((resolve) => { const t = setTimeout(resolve, timeoutMs); t.unref?.(); idleWaiters.push(() => { clearTimeout(t); resolve(); }); });
+}
+
+/** The digest work in progress, for /api/health: a supervisor (the Hub) reads it so it does not restart the app in the
+ *  middle of a digest. { running: link id or null, queued: how many wait, stage: what it is doing }. */
+export function digestBusy() {
+  const id = currentId;
+  const row = id && isOpen() ? getRow(id) : null;
+  return { running: id || null, queued: queue.length, stage: row?.stage || null };
 }
 
 /** Resolves when this link's digest leaves queued/running, or after timeoutMs. */
@@ -556,6 +566,9 @@ async function runDigest(id) {
     if (mv.transcript.status !== "done") {
       const why = { skipped: "no había motor de voz a texto", no_audio: "el vídeo no tiene audio", no_speech: "no se detectó voz", failed: mv.transcript.error || "falló" }[mv.transcript.status] || mv.transcript.status;
       notes.push(`Sin transcripción: ${why}.`);
+    } else if (mv.transcript.via === "faster-whisper" && mv.transcript.model && mv.transcript.model !== video.videoSettings().whisper_model) {
+      // the setting asks for one model and the cache had another: the digest says which one transcribed it
+      notes.push(`Transcripción con el modelo «${mv.transcript.model}» de faster-whisper: el «${video.videoSettings().whisper_model}» no está en la caché local.`);
     }
 
     const dir = digestDir(id);
@@ -616,22 +629,27 @@ async function runDigest(id) {
     // 4. literal screen text
     let ocrEngine = sameSource ? prev.ocr_engine : null;
     if (s.ocr && distinct.length && !(sameSource && prev.ocr_done)) {
-      stage("ocr", `Leyendo el texto en pantalla (0/${distinct.length})…`);
+      // a partial digest already read some frames: only the ones without text are read again
+      const pending = distinct.filter((v) => !v.ocr);
+      stage("ocr", `Leyendo el texto en pantalla (0/${pending.length})…`);
       const state = {};
       let done = 0, failed = 0;
       let unavailable = null;
       // the first frame alone: it may have to start the OCR service; then two at a time
-      await eachLimit(distinct, (v, i) => (i === 0 ? 1 : 2), async (v) => {
+      await eachLimit(pending, (v, i) => (i === 0 ? 1 : 2), async (v) => {
         if (unavailable || signal.aborted) return;
         const r = await ocrOne(path.join(dir, v.file), { lang: s.ocr_lang, state, signal });
         if (!r.ok && r.kind === "unavailable") { unavailable = r.error; return; }
         if (r.ok) { v.ocr = core.cleanOcr(r.text); ocrEngine = r.backend || ocrEngine; } else failed++;
         done++;
-        if (done % 5 === 0) stage("ocr", `Leyendo el texto en pantalla (${done}/${distinct.length})…`);
+        if (done % 5 === 0) stage("ocr", `Leyendo el texto en pantalla (${done}/${pending.length})…`);
       });
       if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
       if (unavailable) { notes.push(unavailable); ocrEngine = null; }
       if (failed) notes.push(`El OCR falló en ${failed} fotogramas.`);
+    }
+    // the repeats are recomputed over every frame, so a frame read now is compared with the ones read before
+    {
       let last = null;
       for (const v of distinct) {
         v.ocr_same_as = null;
@@ -643,7 +661,8 @@ async function runDigest(id) {
     // 5. what the picture shows (vision model, when one is served)
     let visionModel = sameSource ? prev.vision_model : null;
     if (s.vision && s.vision_max > 0 && distinct.length && !(sameSource && prev.vision_done)) {
-      const order = [...distinct].sort((a, b) => (b.end - b.start) - (a.end - a.start)).slice(0, s.vision_max);
+      // a partial digest already described some frames: only the ones without a caption are described again
+      const order = [...distinct].filter((v) => !v.caption).sort((a, b) => (b.end - b.start) - (a.end - a.start)).slice(0, s.vision_max);
       stage("vision", `Describiendo planos (0/${order.length})…`);
       let done = 0;
       let stopped = null;
@@ -663,15 +682,22 @@ async function runDigest(id) {
       if (stopped) notes.push(stopped);
       if (distinct.length > s.vision_max) notes.push(`Solo se describieron los ${s.vision_max} planos más largos.`);
     }
+    // "done" means every frame that should have it has it: a frame left without text or caption is redone next time, and
+    // only that frame (the ones already read are kept).
+    const ocrDone = !s.ocr || !distinct.length || distinct.every((v) => v.ocr);
+    const visionTargets = s.vision && s.vision_max > 0
+      ? [...distinct].sort((a, b) => (b.end - b.start) - (a.end - a.start)).slice(0, s.vision_max) : [];
+    const visionDone = !visionTargets.length || visionTargets.every((v) => v.caption);
 
-    // 5b. what the soundtrack sounds like: music, effects, ambience (Sentidos). Not having the engine never makes the digest partial.
+    // 5b. what the soundtrack sounds like: music, effects, ambience (Sentidos). It is the slowest step of a short video
+    // (about two minutes for an 18 s reel), so it runs alongside the chapters and the summary instead of before them.
+    // Not having the engine never makes the digest partial.
     let soundModel = sameSource ? prev.sound || null : null;
-    if (s.sound && info.hasAudio !== false && !(soundModel && soundModel.status === "done")) {
-      stage("sound", "Escuchando la banda sonora (música, efectos, ambiente)…");
-      soundModel = await sound.analyzeSoundtrack(med.source_path, { durationS: duration, maxS: s.sound_max_s });
-      if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
-      if (soundModel.status !== "done") notes.push(`Sin capa de sonido: ${soundModel.error}`);
-    }
+    const wantsSound = s.sound && opts.sound !== false && info.hasAudio !== false && !(soundModel && soundModel.status === "done");
+    const soundJob = wantsSound
+      ? sound.analyzeSoundtrack(med.source_path, { durationS: duration, maxS: s.sound_max_s }).catch((e) => ({ status: "failed", error: String(e?.message || e).slice(0, 300) }))
+      : null;
+    if (soundJob) stage("sound", "Escuchando la banda sonora (música, efectos, ambiente)…");
 
     // 6. chapters and the generated summary
     stage("chapters", "Agrupando en capítulos…");
@@ -689,10 +715,22 @@ async function runDigest(id) {
       post_text: core.decodeEntities(meta.description || (link.content_text && link.content_text.length < 4000 ? link.content_text : "") || ""),
       focus: opts.focus || "", meta, seg_info: segInfo,
       transcript: { status: mv.transcript.status, via: mv.transcript.via, model: mv.transcript.model, language: mv.transcript.language, error: mv.transcript.error, segments: speech },
-      visual, chapters, summary: null, sound: soundModel, notes, ocr_engine: ocrEngine, ocr_done: !!ocrEngine || !s.ocr, vision_model: visionModel,
-      vision_done: !!visionModel,
+      visual, chapters, summary: null, sound: soundModel, notes, ocr_engine: ocrEngine, ocr_done: ocrDone, vision_model: visionModel,
+      vision_done: visionDone,
     };
-    if (s.llm && chapters.length && (speech.length || distinct.some((v) => v.ocr || v.caption))) {
+    // A partial digest that only lacked the soundtrack (or a frame the models could not read) keeps the summary it already
+    // had: the material it was written from has not changed, so asking again does not pay for the model twice.
+    const sameMaterial = sameSource && prev.summary && (prev.focus || "") === (opts.focus || "")
+      && JSON.stringify((prev.visual || []).map((v) => [v.idx, v.ocr || "", v.caption || ""])) === JSON.stringify(visual.map((v) => [v.idx, v.ocr || "", v.caption || ""]))
+      && JSON.stringify((prev.transcript?.segments || []).map((x) => x.text)) === JSON.stringify(speech.map((x) => x.text));
+    if (sameMaterial) {
+      model.summary = prev.summary;
+      model.chapter_model = prev.chapter_model || null;
+      for (const c of chapters) {
+        const old = (prev.chapters || []).find((x) => x.id === c.id);
+        if (old) { c.title = old.title || ""; c.summary = old.summary || ""; c.focus = !!old.focus; }
+      }
+    } else if (s.llm && chapters.length && (speech.length || distinct.some((v) => v.ocr || v.caption))) {
       stage("summary", "Resumiendo con el modelo local (con el modelo en frío puede tardar unos minutos)…");
       const sum = await summarize(model, { lang: s.summary_lang, focus: opts.focus, signal });
       if (sum.ok) model.summary = sum;
@@ -700,6 +738,15 @@ async function runDigest(id) {
       model.chapter_model = sum.model || null;
     }
     for (const c of chapters) delete c.speech;
+
+    // the soundtrack, which was being listened to while the chapters and the summary were written
+    if (soundJob) {
+      stage("sound", "Terminando la banda sonora…");
+      soundModel = await soundJob;
+      if (signal.aborted) throw new Stop("Interrumpido al cerrar la app.", "ABORT");
+      if (soundModel.status !== "done") notes.push(`Sin capa de sonido: ${soundModel.error}`);
+      model.sound = soundModel;
+    }
 
     // 7. contact sheets
     stage("sheets", "Montando el mosaico…");
@@ -757,7 +804,8 @@ async function runDigest(id) {
     const stats = {
       title: model.title, duration_s: duration, words: speech.reduce((n, x) => n + x.text.split(/\s+/).filter(Boolean).length, 0), speech_segments: speech.length,
       visual_segments: visual.length, distinct_frames: distinct.length, ocr_frames: distinct.filter((v) => v.ocr).length,
-      described_frames: distinct.filter((v) => v.caption).length, sound_sections: model.sound?.status === "done" ? model.sound.sections.length : 0, sound_state: model.sound?.status || (s.sound ? "no_audio" : "off"), chapters: chapters.length, sheets: sheets.length, tokens,
+      described_frames: distinct.filter((v) => v.caption).length, sound_sections: model.sound?.status === "done" ? model.sound.sections.length : 0,
+      sound_state: model.sound?.status || (s.sound && opts.sound !== false ? "no_audio" : "off"), chapters: chapters.length, sheets: sheets.length, tokens,
       engines: { transcript: [mv.transcript.via, mv.transcript.model].filter(Boolean).join(" ") || null, ocr: ocrEngine, vision: visionModel, sound: model.sound?.status === "done" ? "sentidos" : null, llm: model.summary?.model || null },
       seg_info: segInfo, built_s: Math.round((Date.now() - started) / 1000), notes,
     };
@@ -799,6 +847,7 @@ export const requestInput = z.object({
   focus: z.string().trim().max(500).optional(),
   force: z.boolean().default(false), redo_media: z.boolean().default(false),
   language: z.string().trim().max(10).optional(),
+  sound: z.boolean().optional(), // false skips the soundtrack layer for this digest (the setting still decides by default)
 });
 
 /** Find (or save) the link, then queue its digest. Idempotent: a finished digest of the same video and focus is returned as it is. */
@@ -827,7 +876,7 @@ export function requestDigest(input = {}) {
   }
   ensureRow(link.id);
   patchRow(link.id, { status: "queued", stage: "", detail: "En cola…", error: "", focus, finished_at: null });
-  pending.set(link.id, { force: a.force, redoMedia: a.redo_media, focus, path: a.path, language: a.language });
+  pending.set(link.id, { force: a.force, redoMedia: a.redo_media, focus, path: a.path, language: a.language, sound: a.sound });
   enqueue(link.id);
   return digestView(link.id);
 }

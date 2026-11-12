@@ -293,3 +293,71 @@ test("video_digest from an unknown url saves the link; bad requests are refused"
     assert.ok(["queued", "running", "failed"].includes(r.body.status));
   } finally { await s.stop(); }
 });
+
+test("a partial digest is redone only where it was missing: frames, OCR and summary are kept", { skip: SKIP, timeout: 120_000 }, async () => {
+  const s = await bootServer();
+  try {
+    const calls = [];
+    video.setSttProvider(stt);
+    // the first pass reads only the first frame: the second one fails, so the digest stays partial
+    let read = 0;
+    digest.setOcrProvider(async (file) => {
+      read++;
+      if (read > 1) return { ok: false, kind: "error", error: "OCR de prueba a medias" };
+      return { ok: true, backend: "mock-ocr", text: "CACHE L2" };
+    });
+    digest.setChatProvider(mockChat(calls));
+    const id = await savedLink(s);
+    await s.call("POST", `/api/links/${id}/digest`, { path: clip });
+    const first = await digest.waitDigest(id, 90_000);
+    assert.equal(first.status, "partial", `${first.status}: ${first.error} ${first.detail}`);
+    const frame = path.join(digest.digestDir(id), "frames", "v001.jpg");
+    const frameTime = fs.statSync(frame).mtimeMs;
+    const summaryCalls = calls.filter((c) => c.json?.properties?.tldr).length;
+    assert.equal(summaryCalls, 1);
+
+    // asking again reads only the frame that was left, keeps the frame on disk and does not pay for the summary twice
+    digest.setOcrProvider(async () => ({ ok: true, backend: "mock-ocr", text: "RESULTADO" }));
+    await s.call("POST", `/api/links/${id}/digest`, {});
+    const again = await digest.waitDigest(id, 90_000);
+    assert.equal(again.status, "done", `${again.status}: ${again.error} ${again.detail}`);
+    assert.equal(fs.statSync(frame).mtimeMs, frameTime, "the frames are not extracted again");
+    assert.equal(calls.filter((c) => c.json?.properties?.tldr).length, summaryCalls, "the summary is reused, not written again");
+    assert.match(digest.readLayer(id, "visual"), /RESULTADO/);
+    assert.match(digest.readLayer(id, "visual"), /CACHE L2/);
+  } finally { await s.stop(); }
+});
+
+test("the soundtrack runs alongside the summary and can be skipped per request", { skip: SKIP, timeout: 120_000 }, async () => {
+  const s = await bootServer();
+  try {
+    const order = [];
+    video.setSttProvider(stt);
+    digest.setOcrProvider(async () => ({ ok: true, backend: "mock-ocr", text: "PANTALLA" }));
+    const chat = mockChat([]);
+    digest.setChatProvider(async (args) => { order.push("chat"); return chat(args); });
+    // a slow soundtrack: if it ran before the summary, the summary would only start after it
+    const sentidos = await import("../server/sentidos.js");
+    const previous = sentidos.setSentidosRunner(async () => {
+      order.push("sound-start");
+      await new Promise((r) => setTimeout(r, 1500));
+      order.push("sound-end");
+      return { ok: true, data: { end: 3, sections: [{ start: 0, end: 3, label: "música suave", ast_top: [["Music", 0.8]] }] } };
+    });
+    try {
+      const id = await savedLink(s);
+      await s.call("POST", `/api/links/${id}/digest`, { path: clip });
+      const row = await digest.waitDigest(id, 90_000);
+      assert.equal(row.status, "done", `${row.status}: ${row.error} ${row.detail}`);
+      assert.ok(order.includes("sound-start") && order.includes("chat"), `order: ${order.join(",")}`);
+      assert.ok(order.indexOf("chat") < order.indexOf("sound-end"), `the summary does not wait for the soundtrack: ${order.join(",")}`);
+      assert.match(digest.readLayer(id, "sound"), /música suave/);
+
+      // sound: false leaves the layer out of the next digest of the same video
+      await s.call("POST", `/api/links/${id}/digest`, { force: true, sound: false });
+      const skipped = await digest.waitDigest(id, 90_000);
+      assert.equal(skipped.status, "done");
+      assert.equal(JSON.parse(skipped.stats).sound_state, "off");
+    } finally { sentidos.setSentidosRunner(previous); }
+  } finally { await s.stop(); }
+});

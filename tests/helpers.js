@@ -15,6 +15,9 @@ import { shutdownListen } from "../server/listen.js";
 process.env.LINKS_ALLOW_PRIVATE_URLS = "1";
 // A test's fabricated providers must never discover or launch production apps.
 process.env.HOARD_HUB_URL = 'http://127.0.0.1:1';
+// ...and the events a test checks must go out: a HOARD_EVENTS=0 in the shell that runs the suite (a developer's own
+// environment) would silence them and make the bus tests fail for a reason that has nothing to do with the code.
+delete process.env.HOARD_EVENTS;
 // The family folder (~/.hoard/bin) may hold the real yt-dlp of a developer machine: tests that look for programs must not find it.
 // A folder of this process alone, gone when it ends: one shared by every run kept whatever a run left in it, and a program
 // left there was then found by every later run.

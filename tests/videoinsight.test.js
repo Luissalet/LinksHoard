@@ -270,3 +270,32 @@ test("settings are validated and stored", async () => {
     assert.equal((await s.call("PUT", "/api/video/settings", { max_frames: 999 })).status >= 400, true);
   } finally { await s.stop(); }
 });
+
+test("the local speech to text uses the best model in the cache instead of failing on the one the setting asks for", () => {
+  // the setting asks for "base" and the cache only has "tiny": a smaller model is used, never a failure
+  assert.equal(video.bestCachedWhisperModel(["tiny"], "base"), "tiny");
+  assert.equal(video.bestCachedWhisperModel(["tiny", "small"], "base"), "tiny", "never a bigger model than the one asked for");
+  assert.equal(video.bestCachedWhisperModel(["tiny", "base", "small"], "base"), "base");
+  assert.equal(video.bestCachedWhisperModel(["tiny", "base"], "medium"), "base", "the largest one that is not bigger");
+  assert.equal(video.bestCachedWhisperModel(["small"], "tiny"), "small", "with nothing smaller, the smallest there is");
+  assert.equal(video.bestCachedWhisperModel([], "base"), null);
+  assert.equal(video.bestCachedWhisperModel(["no-existe"], "base"), null);
+});
+
+test("the cached models are read from the Hugging Face cache faster-whisper uses", () => {
+  const home = tempDir();
+  const root = path.join(home, "hub");
+  fs.mkdirSync(path.join(root, "models--Systran--faster-whisper-tiny", "snapshots", "abc"), { recursive: true });
+  // a folder without a snapshot is a half download and does not count
+  fs.mkdirSync(path.join(root, "models--Systran--faster-whisper-base", "snapshots"), { recursive: true });
+  fs.mkdirSync(path.join(root, "models--other--thing", "snapshots", "x"), { recursive: true });
+  const before = process.env.HF_HOME;
+  process.env.HF_HOME = home;
+  try {
+    assert.deepEqual(video.cachedWhisperModels(), ["tiny"]);
+    assert.equal(video.bestCachedWhisperModel(video.cachedWhisperModels(), "base"), "tiny");
+  } finally {
+    if (before === undefined) delete process.env.HF_HOME; else process.env.HF_HOME = before;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

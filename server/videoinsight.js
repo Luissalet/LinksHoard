@@ -10,6 +10,7 @@
 // the user asked for it (download: true, or the auto_download setting) - a download through the app's own yt-dlp integration. Nothing here
 // scrapes anything by itself.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -323,10 +324,49 @@ async function pythonWithWhisper() {
 }
 export function forgetWhisper() { whisperChecked = null; }
 
+// faster-whisper's models, smallest first: the order used to pick the best one that is already on disk.
+export const WHISPER_SIZES = ["tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large-v3-turbo"];
+
+/** The best model of `cached` for `wanted`: the wanted one when it is there, else the largest cached one that is not bigger
+ *  than it (a smaller model transcribes worse but works), else the smallest cached one. Null when nothing is cached. */
+export function bestCachedWhisperModel(cached, wanted) {
+  const have = [...new Set((cached || []).map((m) => String(m || "").trim()).filter((m) => WHISPER_SIZES.includes(m)))];
+  if (!have.length) return null;
+  const want = String(wanted || "").trim();
+  if (have.includes(want)) return want;
+  const rank = (m) => WHISPER_SIZES.indexOf(m);
+  const wantRank = rank(want);
+  if (wantRank < 0) return have.sort((a, b) => rank(b) - rank(a))[0];
+  const smaller = have.filter((m) => rank(m) <= wantRank).sort((a, b) => rank(b) - rank(a));
+  return smaller[0] || have.sort((a, b) => rank(a) - rank(b))[0];
+}
+
+/** The faster-whisper models already downloaded (the Hugging Face cache faster-whisper reads), as size names. */
+export function cachedWhisperModels() {
+  const roots = [process.env.HF_HOME && path.join(process.env.HF_HOME, "hub"), process.env.HUGGINGFACE_HUB_CACHE,
+    path.join(os.homedir(), ".cache", "huggingface", "hub")].filter(Boolean);
+  const found = [];
+  for (const root of roots) {
+    let names = [];
+    try { names = fs.readdirSync(root); } catch { continue; }
+    for (const name of names) {
+      const m = /^models--Systran--faster-whisper-(.+)$/.exec(name);
+      if (!m) continue;
+      // a model folder without its snapshot is a half download: it would fail the same way as a missing one
+      try { if (!fs.readdirSync(path.join(root, name, "snapshots")).length) continue; } catch { continue; }
+      found.push(m[1]);
+    }
+  }
+  return [...new Set(found)];
+}
+
 async function whisperProvider(wav, { language, signal }) {
   const py = await pythonWithWhisper();
   if (!py) return { ok: false, kind: "unavailable", error: "faster-whisper no está instalado." };
-  const model = videoSettings().whisper_model;
+  const wanted = videoSettings().whisper_model;
+  // The setting asks for one model; the cache may only have another (a fresh install has "tiny"). Use the best one that is
+  // there instead of failing, and say which one was used.
+  const model = bestCachedWhisperModel(cachedWhisperModels(), wanted) || wanted;
   let out = "";
   const r = await runProcess({ cmd: py.cmd, args: [] }, [path.join(HERE, "stt_local.py"), wav, model, language || "auto", process.env.LINKS_WHISPER_ALLOW_DOWNLOAD === "1" ? "1" : "0"],
     { signal, timeoutMs: 45 * 60_000, onStdoutLine: (l) => { out += l; } });
@@ -337,7 +377,8 @@ async function whisperProvider(wav, { language, signal }) {
   }
   try {
     const data = JSON.parse(out);
-    return { ok: true, text: data.text, segments: data.segments, language: data.language, via: "faster-whisper", model: data.model };
+    return { ok: true, text: data.text, segments: data.segments, language: data.language, via: "faster-whisper", model: data.model || model,
+      note: model !== wanted ? `Se usó el modelo «${model}» de faster-whisper: el «${wanted}» no está en la caché local.` : "" };
   } catch { return { ok: false, kind: "error", error: "faster-whisper no devolvió un resultado legible." }; }
 }
 

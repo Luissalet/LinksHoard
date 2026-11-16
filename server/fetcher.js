@@ -3,10 +3,13 @@
 import { extractHtml, kindFromResponse, oembedTitle, excerptOf, wordCount } from "./extract.js";
 import { applyFetchResult } from "./links.js";
 import { webGet } from "./hoard-commons/web.js";
+import { parseHTML } from "linkedom";
 import { fetchProfile, USER_AGENT } from "./net-policy.js";
+import { documentType, extractDocument } from "./documents.js";
 
 const TIMEOUT_MS = 15_000;
-const MAX_BYTES = 5 * 1024 * 1024;
+// documents (PDF, DOCX, EPUB) are read whole, so the cap is that of a long paper or a book, not of a web page
+const MAX_BYTES = 40 * 1024 * 1024;
 const CONCURRENCY = 2;
 
 const queue = [];
@@ -31,7 +34,9 @@ async function fetchOne(url) {
   const finalUrl = r.finalUrl || url;
   const kind = kindFromResponse(finalUrl, r.contentType);
 
-  if (kind === "pdf" || kind === "image") {
+  const docType = kind === "article" ? null : documentType(finalUrl, r.contentType, r.body);
+  if (docType) return documentResult(r, finalUrl, docType);
+  if (kind === "image") {
     return { kind, title: filenameTitle(finalUrl), description: "", contentText: "", byline: "", lang: "" };
   }
 
@@ -41,7 +46,41 @@ async function fetchOne(url) {
     extracted.title = oembed.title;
     if (oembed.byline) extracted.byline = oembed.byline;
   }
+  const arxiv = arxivPdf(finalUrl);
+  if (arxiv) return arxivResult(r.text, arxiv, extracted);
   return { kind: oembed ? "video" : kind, ...extracted };
+}
+
+/** The text of a downloaded PDF, DOCX or EPUB; one that cannot be read whole is still saved by its file name, with the reason. */
+async function documentResult(r, finalUrl, type) {
+  const doc = r.truncated ? { error: `supera ${MAX_BYTES / 1024 / 1024} MB` }
+    : await extractDocument(r.body, { type, url: finalUrl }).catch((error) => ({ error: error.message }));
+  if (doc.error) return { kind: type === "pdf" ? "pdf" : "document", title: filenameTitle(finalUrl), description: `No se pudo leer el texto del documento (${doc.error}).`, contentText: "", byline: "", lang: "" };
+  return { kind: doc.kind, title: doc.title || filenameTitle(finalUrl), description: "", contentText: doc.contentText, byline: doc.byline, lang: doc.lang };
+}
+
+/** arxiv.org/abs/<id> (or /html/<id>): the paper's PDF, whose text is the whole paper rather than the abstract page. */
+export function arxivPdf(url) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)arxiv\.org$/.test(u.hostname)) return null;
+    const id = u.pathname.match(/^\/(?:abs|html)\/(.+?)\/?$/)?.[1];
+    return id ? `https://arxiv.org/pdf/${id}` : null;
+  } catch { return null; }
+}
+
+/** Title and authors from the abstract page, text from the PDF; the abstract page's text when the PDF cannot be read. */
+async function arxivResult(html, pdfUrl, extracted) {
+  const { document } = parseHTML(html);
+  const meta = (name) => [...document.querySelectorAll(`meta[name="${name}"]`)].map((m) => (m.getAttribute("content") || "").trim()).filter(Boolean);
+  const title = meta("citation_title")[0] || extracted.title;
+  const byline = meta("citation_author").join("; ") || extracted.byline;
+  const r = await webGet(pdfUrl, { profile: fetchProfile(), accept: "any", timeoutMs: 60_000, maxBytes: MAX_BYTES, userAgent: USER_AGENT });
+  if (r.ok && !r.truncated) {
+    const doc = await extractDocument(r.body, { type: "pdf", url: pdfUrl }).catch(() => null);
+    if (doc?.contentText) return { kind: "pdf", title, byline, description: extracted.description, contentText: doc.contentText, lang: extracted.lang || "en" };
+  }
+  return { ...extracted, kind: "article", title, byline };
 }
 
 function filenameTitle(url) {

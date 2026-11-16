@@ -30,7 +30,7 @@ export function selectReadingPlan(rows, input) {
   const excluded = { unsupported_kind: 0, unavailable_text: 0, unknown_word_count: 0, over_budget: 0 };
   const candidates = [];
   for (const row of matching) {
-    if (!["article", "pdf", "other"].includes(row.kind)) { excluded.unsupported_kind++; continue; }
+    if (!["article", "pdf", "document", "other"].includes(row.kind)) { excluded.unsupported_kind++; continue; }
     if (row.fetch_status !== "ok" || !row.has_text) { excluded.unavailable_text++; continue; }
     if (!Number.isSafeInteger(row.word_count) || row.word_count <= 0) { excluded.unknown_word_count++; continue; }
     const estimated_minutes = Math.ceil(row.word_count / speed);

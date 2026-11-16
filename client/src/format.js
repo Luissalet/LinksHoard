@@ -1,6 +1,6 @@
 // Formatting helpers shared across pages.
 
-const KIND_LABEL = { article: "Artículo", video: "Vídeo", audio: "Audio", pdf: "PDF", image: "Imagen", other: "Otro" };
+const KIND_LABEL = { article: "Artículo", video: "Vídeo", audio: "Audio", pdf: "PDF", document: "Documento", image: "Imagen", other: "Otro" };
 export const kindLabel = (kind) => KIND_LABEL[kind] || "Otro";
 
 const PALETTE = ["#2f5d8a", "#8a5a2f", "#3a7a52", "#7a3a6a", "#a8622f", "#3a6a7a", "#6a5a8a", "#7a2f3a"];

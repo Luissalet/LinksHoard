@@ -7,8 +7,8 @@ import path from "node:path";
 import { db, uid, now, transaction, ftsEnabled, isOpen, dataDir } from "./db.js";
 import { normalizeUrl, siteOf } from "./url.js";
 
-export const KINDS = ["article", "video", "audio", "pdf", "image", "other"];
-export const SOURCES = ["manual", "agent", "share", "bookmarklet", "import", "watch", "download"];
+export const KINDS = ["article", "video", "audio", "pdf", "document", "image", "other"];
+export const SOURCES = ["manual", "agent", "share", "bookmarklet", "import", "watch", "download", "extension"];
 
 const tagsField = z.array(z.string().trim().min(1).max(40)).max(50);
 

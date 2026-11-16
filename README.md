@@ -14,6 +14,8 @@ It runs as its own Hoard with its own server, port, data folder and MCP bridge. 
 
 ### Save and read
 - Paste a URL, use the bookmarklet, share into the installed PWA (the manifest declares a share target) or call `save_link`. The link is stored at once and fetched by a background queue; saving is idempotent on a normalised URL (tracking parameters, fragments, default ports and trailing slashes are ignored).
+- PDF, DOCX and EPUB links are read as text (paragraphs rebuilt from the PDF layout, running heads dropped); an arXiv abstract page is saved with the text of its paper.
+- A minimal Chromium browser extension (`extension/`) sends the current tab as the browser shows it, signed in, or the PDF, DOCX or EPUB it has open, and opens it folded.
 - Reader with adjustable font size, original URL, site, author and reading time; select text to highlight with an optional note.
 - Tags, favourites, archive and read/unread state, with tag counts and site filters.
 - Full-text search (SQLite FTS5, with an automatic `LIKE` fallback) over title, description, text, notes, tags and video transcripts.
@@ -24,6 +26,10 @@ It runs as its own Hoard with its own server, port, data folder and MCP bridge. 
 
 ### Ask a saved article
 - The reader answers questions about an article through the Hub model, with exact quotes and clickable paragraph anchors; invalid quotes and changed text are reported. Questions and answers are transient. See [docs/ARTICLE_QUESTIONS.md](docs/ARTICLE_QUESTIONS.md).
+
+### Fold and translate
+- **Plegar** reads any saved text at five levels with a slider or the keys 1-5, + and -: full text, literal key sentences (picked without a model), the key idea of each section and why it matters, one line per section, and a map of themes. Levels 3-5 are written once by the Hub model and cached per text version and language; every item opens its paragraph in the full text or in the original page, and notes stay with their passage at every level. The fold is an open JSON document. See [docs/FOLD.md](docs/FOLD.md).
+- Bilingual reading: the reader shows each paragraph with its translation underneath, in the chosen language, translated by the Hub model and stored.
 
 ### Watches
 - Follow an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a plain page (text diff on every change), each on its own interval.
@@ -85,13 +91,13 @@ npm start          # http://127.0.0.1:5181
 
 The server answers only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]`; to reach it from a phone through a tunnel, add the tunnel's host names to `LINKS_ALLOWED_HOSTS`.
 
-Pages are fetched with the family's shared fetcher: every redirect hop is checked against private and metadata addresses, the body is capped at 5 MB, and HTML goes through Readability with a manual fallback.
+Pages are fetched with the family's shared fetcher: every redirect hop is checked against private and metadata addresses, the body is capped at 40 MB (documents are read whole), and HTML goes through Readability with a manual fallback.
 
 ## Connection with Faustus and Hoard Hub
 
 - App id `links`, default port 5181; `faustus-plugin.json` is the plugin manifest. Start it from the Hoard Hub or with `npm start`.
 - The MCP bridge (`server/mcp.js`) proxies every call over HTTP to the running app, authenticated with the token in `<data dir>/mcp-token`; it never opens the database itself. `GET /api/agent/tools` returns the live tool list. Tool descriptions end with Spanish synonyms so Spanish phrasing matches the right tool.
-- Tools by group: saving and reading (`save_link`, `list_links`, `search_links`, `read_link`, `read_link_paragraphs`, `ask_link`, `edit_link`, `tag_link`, `mark_link`, `add_highlight`, `refetch_link`, `delete_link`, `list_tags`, `link_digest`, `resurface`, `reading_plan`, `highlights_to_cards`, `import_video_transcript`); watches (`watch_*`); site mapping and crawling (`map_site`, `crawl_*`); downloads (`media_*`, `site_sessions`, `site_login`, `site_logout`, `read_post`); video (`link_video*`, `video_digest*`, `video_ask`, `video_find`, `video_frame`); listening (`listen_*`); sound (`audio_*`).
+- Tools by group: saving and reading (`save_link`, `list_links`, `search_links`, `read_link`, `read_link_paragraphs`, `ask_link`, `fold_link`, `fold_read`, `translate_link`, `edit_link`, `tag_link`, `mark_link`, `add_highlight`, `refetch_link`, `delete_link`, `list_tags`, `link_digest`, `resurface`, `reading_plan`, `highlights_to_cards`, `import_video_transcript`); watches (`watch_*`); site mapping and crawling (`map_site`, `crawl_*`); downloads (`media_*`, `site_sessions`, `site_login`, `site_logout`, `read_post`); video (`link_video*`, `video_digest*`, `video_ask`, `video_find`, `video_frame`); listening (`listen_*`); sound (`audio_*`).
 - The assistant is told to summarise or quote a link only from the text `read_link` returns, and to say plainly when a fetch is pending or failed.
 - Writer's Hoard forwards its reading views and tool calls to this app through the Hub and offers to start it when it is not running.
 - The manifest names the skills `read-later-digest` and `web-to-clean-markdown`, shown in the Hub's Skills tab.
@@ -103,6 +109,7 @@ Pages are fetched with the family's shared fetcher: every redirect hop is checke
 | `server/` | Node server: API, extraction, watches, crawls, downloads, video, listening, MCP bridge |
 | `client/` | Web interface (Vite) |
 | `sentidos/` | Python listening engine |
+| `extension/` | Browser extension that sends the current tab to the app |
 | `docs/` | Feature references |
 | `scripts/` | Helper scripts |
 | `tests/` | Test suite |

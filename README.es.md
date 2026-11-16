@@ -14,6 +14,8 @@ Funciona como un Hoard propio, con su servidor, puerto, carpeta de datos y puent
 
 ### Guardar y leer
 - Pega una URL, usa el bookmarklet, comparte hacia la PWA instalada (el manifiesto declara un destino de compartir) o llama a `save_link`. El enlace se guarda al instante y una cola en segundo plano lo descarga; guardar es idempotente sobre una URL normalizada (se ignoran parámetros de seguimiento, fragmentos, puertos por defecto y barras finales).
+- Los enlaces a PDF, DOCX y EPUB se leen como texto (párrafos reconstruidos de la maquetación del PDF, sin cabeceras repetidas); una página de resumen de arXiv se guarda con el texto de su artículo.
+- Una extensión mínima para navegadores Chromium (`extension/`) manda la pestaña tal como la ves, con tu sesión, o el PDF, DOCX o EPUB que tiene abierto, y la abre plegada.
 - Lector con tamaño de letra ajustable, URL original, sitio, autor y tiempo de lectura; selecciona texto para subrayarlo con una nota opcional.
 - Etiquetas, favoritos, archivo y estado leído/no leído, con recuento de etiquetas y filtro por sitio.
 - Búsqueda de texto completo (SQLite FTS5, con alternativa automática `LIKE`) en título, descripción, texto, notas, etiquetas y transcripciones de vídeo.
@@ -24,6 +26,10 @@ Funciona como un Hoard propio, con su servidor, puerto, carpeta de datos y puent
 
 ### Preguntar a un artículo guardado
 - El lector responde preguntas sobre un artículo con el modelo del Hub, con citas exactas y anclas de párrafo clicables; se avisa de citas inválidas y de texto cambiado. Las preguntas y respuestas son transitorias. Véase [docs/ARTICLE_QUESTIONS.md](docs/ARTICLE_QUESTIONS.md).
+
+### Plegar y traducir
+- **Plegar** lee cualquier texto guardado en cinco niveles con un deslizador o las teclas 1-5, + y −: texto completo, frases clave literales (elegidas sin modelo), la idea clave de cada sección y por qué importa, una línea por sección y un mapa de temas. Los niveles 3-5 los escribe una vez el modelo del Hub y quedan guardados por versión del texto e idioma; cada elemento abre su párrafo en el texto completo o en la página original, y las notas siguen con su pasaje en todos los niveles. El plegado es un documento JSON abierto. Véase [docs/FOLD.md](docs/FOLD.md).
+- Lectura bilingüe: el lector muestra cada párrafo con su traducción debajo, en el idioma elegido, traducida por el modelo del Hub y guardada.
 
 ### Vigías
 - Sigue un feed RSS/Atom, un repositorio de GitHub (versiones, etiquetas o commits) o una página normal (diferencia de texto en cada cambio), cada uno con su propio intervalo.
@@ -85,13 +91,13 @@ npm start          # http://127.0.0.1:5181
 
 El servidor solo responde a peticiones cuyo `Host` sea `localhost`, `127.0.0.1` o `[::1]`; para acceder desde el móvil por un túnel, añade los nombres de host del túnel a `LINKS_ALLOWED_HOSTS`.
 
-Las páginas se descargan con el descargador común de la familia: cada salto de redirección se comprueba contra direcciones privadas y de metadatos, el cuerpo se limita a 5 MB y el HTML pasa por Readability con una alternativa manual.
+Las páginas se descargan con el descargador común de la familia: cada salto de redirección se comprueba contra direcciones privadas y de metadatos, el cuerpo se limita a 40 MB (los documentos se leen enteros) y el HTML pasa por Readability con una alternativa manual.
 
 ## Conexión con Faustus y el Hoard Hub
 
 - Id de app `links`, puerto por defecto 5181; `faustus-plugin.json` es el manifiesto del plugin. Arráncala desde el Hoard Hub o con `npm start`.
 - El puente MCP (`server/mcp.js`) reenvía cada llamada por HTTP a la app en marcha, autenticada con el token de `<carpeta de datos>/mcp-token`; nunca abre la base de datos. `GET /api/agent/tools` devuelve la lista viva de herramientas. Las descripciones acaban con sinónimos en español para que las frases en español encuentren la herramienta correcta.
-- Herramientas por grupos: guardar y leer (`save_link`, `list_links`, `search_links`, `read_link`, `read_link_paragraphs`, `ask_link`, `edit_link`, `tag_link`, `mark_link`, `add_highlight`, `refetch_link`, `delete_link`, `list_tags`, `link_digest`, `resurface`, `reading_plan`, `highlights_to_cards`, `import_video_transcript`); vigías (`watch_*`); mapeo y rastreo de sitios (`map_site`, `crawl_*`); descargas (`media_*`, `site_sessions`, `site_login`, `site_logout`, `read_post`); vídeo (`link_video*`, `video_digest*`, `video_ask`, `video_find`, `video_frame`); escucha (`listen_*`); sonido (`audio_*`).
+- Herramientas por grupos: guardar y leer (`save_link`, `list_links`, `search_links`, `read_link`, `read_link_paragraphs`, `ask_link`, `fold_link`, `fold_read`, `translate_link`, `edit_link`, `tag_link`, `mark_link`, `add_highlight`, `refetch_link`, `delete_link`, `list_tags`, `link_digest`, `resurface`, `reading_plan`, `highlights_to_cards`, `import_video_transcript`); vigías (`watch_*`); mapeo y rastreo de sitios (`map_site`, `crawl_*`); descargas (`media_*`, `site_sessions`, `site_login`, `site_logout`, `read_post`); vídeo (`link_video*`, `video_digest*`, `video_ask`, `video_find`, `video_frame`); escucha (`listen_*`); sonido (`audio_*`).
 - Al asistente se le indica que resuma o cite un enlace solo a partir del texto que devuelve `read_link` y que diga claramente cuándo una descarga está pendiente o ha fallado.
 - Writer's Hoard reenvía sus vistas de lectura y llamadas de herramientas a esta app a través del Hub y ofrece arrancarla si no está en marcha.
 - El manifiesto nombra las skills `read-later-digest` y `web-to-clean-markdown`, visibles en la pestaña Skills del Hub.
@@ -103,6 +109,7 @@ Las páginas se descargan con el descargador común de la familia: cada salto de
 | `server/` | Servidor Node: API, extracción, vigías, rastreos, descargas, vídeo, escucha, puente MCP |
 | `client/` | Interfaz web (Vite) |
 | `sentidos/` | Motor de escucha en Python |
+| `extension/` | Extensión de navegador que manda la pestaña actual a la app |
 | `docs/` | Referencias de funciones |
 | `scripts/` | Scripts auxiliares |
 | `tests/` | Pruebas |

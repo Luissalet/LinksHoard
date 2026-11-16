@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Links Hoard: plegar esta página",
+  "version": "0.1.0",
+  "description": "Manda a Links Hoard la página tal como la ves (con tu sesión) o el PDF, DOCX o EPUB abierto, y la abre plegada.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Plegar en Links Hoard" },
+  "options_ui": { "page": "options.html", "open_in_tab": false },
+  "commands": {
+    "_execute_action": { "suggested_key": { "default": "Alt+Shift+L" }, "description": "Plegar esta página en Links Hoard" }
+  }
+}

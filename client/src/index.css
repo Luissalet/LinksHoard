@@ -121,6 +121,26 @@ dialog::backdrop { background: #16223055; }
 .reader-paragraph { scroll-margin-top: 160px; }
 .reader-paragraph-active { background: var(--highlight-bg); color: var(--ink); }
 .reader-paragraph:focus-visible, .article-citation:focus-visible { outline: 2px solid var(--hoard-accent); outline-offset: 3px; }
+/* Plegar and the bilingual reader */
+.fold-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 16px; max-width: 68ch; }
+.fold-range { width: 120px; accent-color: var(--hoard-accent, var(--accent)); }
+.fold-view { max-width: 68ch; }
+.fold-section { margin: 18px 0; padding-bottom: 12px; border-bottom: 1px solid var(--hoard-border, var(--line)); }
+.fold-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.fold-open { text-align: left; font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.fold-open:hover { color: var(--hoard-accent, var(--accent)); }
+.fold-open:focus-visible { outline: 2px solid var(--hoard-accent); outline-offset: 3px; }
+.fold-item { margin: 8px 0; font-size: 15px; line-height: 1.65; }
+.fold-item-tools { display: inline-flex; gap: 10px; margin-left: 8px; vertical-align: baseline; }
+.fold-idea { font-weight: 600; }
+.fold-why { color: var(--muted); }
+.fold-lines { list-style: decimal; padding-left: 22px; }
+.fold-lines li { margin: 6px 0; }
+.fold-themes { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin-top: 12px; }
+.fold-card { padding: 14px; border: 1px solid var(--hoard-border, var(--line)); border-radius: var(--hoard-radius, 8px); background: var(--hoard-surface, var(--panel)); }
+.fold-notes { margin: 6px 0 0; padding-left: 16px; font-size: 13px; list-style: disc; }
+.fold-generate { margin: 10px 0; padding: 12px 14px; border: 1px dashed var(--hoard-border, var(--line)); border-radius: var(--hoard-radius, 8px); }
+.reader-translation { display: block; margin: 4px 0 2px; padding-left: 12px; border-left: 2px solid var(--hoard-accent, var(--accent)); color: var(--muted); font-style: italic; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 }

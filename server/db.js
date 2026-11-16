@@ -299,6 +299,31 @@ const MIGRATIONS = [
     updated_at TEXT NOT NULL
   );
   CREATE INDEX link_listen_queue ON link_listen(queue_pos);
+  `,
+  // Plegar (see fold.js): the generated levels of a link's fold (key idea per section, one line per section, theme map), per
+  // language and source version; and the paragraph-by-paragraph translations of the bilingual reader (see translate.js)
+  `
+  CREATE TABLE link_folds (
+    link_id TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    lang TEXT NOT NULL,
+    version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'none',
+    data TEXT NOT NULL DEFAULT '{}',
+    model TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (link_id, lang)
+  );
+  CREATE TABLE link_translations (
+    link_id TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    lang TEXT NOT NULL,
+    paragraph_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (link_id, lang, paragraph_id)
+  );
   `,];
 
 // FTS5 is attempted at init(); if the runtime's SQLite build lacks it we fall

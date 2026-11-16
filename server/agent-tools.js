@@ -18,6 +18,8 @@ import { resurface, resurfaceSettings } from "./resurface.js";
 import { readingPlan, readingPlanInput } from "./reading-plan.js";
 import { articleSource } from "./article-source.js";
 import { askLink } from "./article-questions.js";
+import { foldLink, foldRead, LANGS } from "./fold.js";
+import { translateLink } from "./translate.js";
 import * as sounds from "./sentidos-tools.js";
 import * as sentidos from "./sentidos.js";
 import { mapSite } from "./sitemap.js";
@@ -30,6 +32,7 @@ save_link is idempotent on the normalized URL: calling it twice for the same pag
 save_link waits briefly for the background fetch so it can report the real title and excerpt; if fetch_status comes back "pending" or "failed", say so plainly instead of inventing a summary — offer refetch_link or suggest the user opens the page.
 Prefer list_links or search_links before read_link when you are not sure which link the user means.
 ask_link answers a question from saved text through the Hub model, with versioned paragraph anchors and exact quotes. Report coverage and failures. Quote presence verifies textual provenance, not the model's interpretation. read_link_paragraphs returns the same complete paragraph IDs used by the reader. Neither tool refetches or edits the saved link.
+To read a long saved text (an article, a paper, a PDF, a DOCX or EPUB) without spending context on all of it, fold it: fold_link writes the generated levels once (key idea per section, one line per section, a theme map) and fold_read gives one level, from 5 theme map to 4 lines, 3 key ideas, 2 literal key sentences and 1 full text, for the whole text or one section. Levels 1-2 are literal and need no model; 3-5 are generated, so check a claim in its [¶n] paragraph before stating it. translate_link gives paragraphs with their translation (bilingual), stored once per language.
 For a saved YouTube video whose read_link text is empty or only metadata, import_video_transcript obtains available captions, then read_link can quote and summarize them.
 Favorite is a dedicated boolean state, not a tag: use mark_link with state "favorite". tag_link only changes labels, even if a label is named "favorita".
 Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
@@ -212,6 +215,27 @@ export const TOOLS = [
     z.object({ id: z.string().optional(), url: z.string().optional(), question: z.string().trim().min(1).max(2000) }),
     { readOnlyHint: true, openWorldHint: true },
     (a) => askLink(resolveLinkOrFail(a).id, { question: a.question })),
+
+  tool("fold_link",
+    "Fold a saved text into five levels for reading level by level — plegar documento\nStarts or resumes the generated levels (3 key idea and why per section, 4 one line per section, 5 theme map) with the Hub model; cached per source version and language. Waits up to wait_s. Returns the status, the sections and the tokens of every level. Levels 1-2 never need it.\nSinónimos: plegar, resumir por niveles, mapa del documento, esquema del artículo, leer un PDF largo, resumen por secciones",
+    z.object({ id: z.string().optional(), url: z.string().optional(), lang: z.enum(Object.keys(LANGS)).default("es").describe("Language of the generated levels"),
+      force: z.boolean().default(false).describe("Write the generated levels again"), wait_s: z.number().int().min(0).max(600).default(120) }),
+    { openWorldHint: true },
+    (a) => foldLink(resolveLinkOrFail(a).id, { lang: a.lang, force: a.force, wait_s: a.wait_s })),
+
+  tool("fold_read",
+    "Read one level of a folded text, whole or one section — leer plegado\nlevel 5 theme map, 4 one line per section, 3 key idea and why, 2 literal key sentences, 1 full text (paged by sections: from_section). section limits it to one section (s3). Markdown with [¶n] paragraph marks; generated levels are marked as such.\nSinónimos: leer nivel, ampliar sección, desplegar, ver frases clave, ver texto completo de una sección",
+    z.object({ id: z.string().optional(), url: z.string().optional(), level: z.union([z.number().int().min(1).max(5), z.enum(["full", "sentences", "key", "lines", "theme"])]).default(5),
+      section: z.string().max(10).optional().describe("A section id like s3"), from_section: z.string().max(10).optional().describe("Level 1: continue from this section"),
+      lang: z.enum(Object.keys(LANGS)).default("es") }), RO,
+    (a) => foldRead(resolveLinkOrFail(a).id, { level: a.level, section: a.section, from_section: a.from_section, lang: a.lang })),
+
+  tool("translate_link",
+    "Translate a saved text paragraph by paragraph, original beside translation — traducir artículo\nUses the Hub model; translations are stored per language and reused. Returns pairs (original, translation) for paragraphs offset..offset+limit, what is still missing and next_offset. translate false only reads what is stored.\nSinónimos: traducir, traducción bilingüe, versión en inglés, lectura bilingüe, traducir PDF",
+    z.object({ id: z.string().optional(), url: z.string().optional(), lang: z.enum(Object.keys(LANGS)).default("es"),
+      offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(200).default(40), translate: z.boolean().default(true) }),
+    { openWorldHint: true },
+    (a) => translateLink(resolveLinkOrFail(a).id, { lang: a.lang, offset: a.offset, limit: a.limit, translate: a.translate })),
 
   tool("tag_link",
     "Add or remove labels only; this does not mark a link as favorite.\nUse id or url. Unlisted tags are left untouched. A tag named favorita is still just a label; use mark_link with state favorite to change actual favorite status.\nSinónimos: etiquetar, poner etiqueta, quitar etiqueta, clasificar enlace",
@@ -776,6 +800,8 @@ export const TOOLS = [
 /** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
 export function callTimeoutMs(name, args = {}) {
   if (name === "ask_link") return 105000;
+  if (name === "fold_link") return ((Number(args.wait_s ?? 120) || 0) + 60) * 1000;
+  if (name === "translate_link") return args.translate === false ? 90_000 : 900_000;
   if ((name === "media_download" || name === "media_retry" || name === "media_audio_for_asr") && args.wait !== false) return ((Number(args.timeout_s) || 150) + 30) * 1000;
   if (name === "link_video_analyze" && args.wait !== false) return ((Number(args.timeout_s) || 120) + 30) * 1000;
   if (name === "video_digest" && args.wait !== false) return ((Number(args.timeout_s) || 600) + 30) * 1000;

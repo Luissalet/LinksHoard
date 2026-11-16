@@ -20,6 +20,8 @@ import { installDigestRoutes } from "./digest-routes.js";
 import { initListen } from "./listen.js";
 import { installListenRoutes } from "./listen-routes.js";
 import { installSentidosRoutes } from "./sentidos-routes.js";
+import { installFoldRoutes } from "./fold-routes.js";
+import { initFolds } from "./fold.js";
 import { createGuard, installSpa, installErrorHandlers } from "./hoard-commons/express.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,10 +52,14 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   initCrawls();
   // Escuchar: narrations left unfinished by the last run are followed again.
   initListen();
+  // Plegar: generated levels left half-written by the last run are resumed the next time they are asked for.
+  initFolds();
 
   const app = express();
   app.disable("x-powered-by");
   app.use(createGuard({ allowedHosts }));
+  // the browser extension sends whole pages and documents (a PDF as base64); body-parser skips a body already parsed
+  app.use("/api/capture", express.json({ limit: "64mb" }));
   app.use(express.json({ limit: "10mb" }));
   installRoutes(app, { version, dataDirConfigured });
   installMediaRoutes(app);
@@ -61,6 +67,7 @@ export function createApp({ dataDir, dataDirConfigured = false, serveStatic = tr
   installDigestRoutes(app);
   installListenRoutes(app);
   installSentidosRoutes(app);
+  installFoldRoutes(app);
   installAgentRoutes(app, { token });
   const DIST = path.join(ROOT, "dist");
   if (serveStatic && fs.existsSync(DIST)) installSpa(app, DIST, { express });

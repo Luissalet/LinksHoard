@@ -129,7 +129,7 @@ export default function App() {
               No se pudo cargar el estado: {error}. <button type="button" className="btn-link" onClick={refresh}>Reintentar</button>
             </div>
           )}
-          {state ? <Component key={readerMatch?.[1] || route} linkId={readerMatch?.[1]} paragraphId={readerQuery.get("paragraph")} sourceVersion={readerQuery.get("version")} /> : !error && <p className="help p-8">Cargando…</p>}
+          {state ? <Component key={readerMatch?.[1] || route} linkId={readerMatch?.[1]} paragraphId={readerQuery.get("paragraph")} sourceVersion={readerQuery.get("version")} foldLevel={readerQuery.get("fold")} /> : !error && <p className="help p-8">Cargando…</p>}
         </main>
       </div>
       <ListenBar />

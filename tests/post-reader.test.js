@@ -16,7 +16,7 @@ const fakeBrowser = (values) => {
       return {};
     },
   };
-  return { headless: (fn) => fn("ws://x"), cdp: (_ws, fn) => fn(c), gallery: async () => null, calls };
+  return { headless: (fn) => fn("ws://x"), cdp: (_ws, fn) => fn(c), gallery: async () => null, camoufox: async () => null, calls };
 };
 
 test("reads the post and resolves short links, dropping the site's own links", async () => {
@@ -99,4 +99,23 @@ test("with no browser and no session the error says what failed", async () => {
   const b = { headless: async () => { throw new Error("El navegador no responde."); }, gallery: async () => null };
   await assert.rejects(readPost({ url: "https://www.instagram.com/reel/DfkQ_GmBGrW/" }, b),
     (e) => e instanceof PostError && e.code === "TIMEOUT" && /navegador falló/.test(e.message));
+});
+
+test("when the Chromium reader and gallery-dl get nothing, Camoufox reads the post", async () => {
+  const seen = [];
+  const b = { ...fakeBrowser([{ wall: true }]), camoufox: async (url, o) => { seen.push({ url, script: o.script }); return { text: "Texto leído con Camoufox", author: "ann", links: [], title: "t", description: "", via: "camoufox" }; } };
+  const out = await readPost({ url: "https://www.instagram.com/p/xyz/" }, b);
+  assert.equal(out.via, "camoufox");
+  assert.equal(out.text, "Texto leído con Camoufox");
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].script, /instagram/, "it is given the same page script the Chromium reader runs");
+});
+
+test("Camoufox is not asked when the first reader got the post, and a wall it also meets is still a login wall", async () => {
+  let asked = 0;
+  const ok = { ...fakeBrowser([{ text: "ya está", author: "a", links: [] }]), camoufox: async () => { asked++; return null; } };
+  assert.equal((await readPost({ url: "https://x.com/a/status/3" }, ok)).text, "ya está");
+  assert.equal(asked, 0);
+  const wall = { ...fakeBrowser([{ wall: true }]), camoufox: async () => ({ wall: true, via: "camoufox" }) };
+  await assert.rejects(readPost({ url: "https://www.instagram.com/p/xyz/" }, wall), (e) => e.code === "LOGIN_NEEDED");
 });

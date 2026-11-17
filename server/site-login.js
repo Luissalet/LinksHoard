@@ -95,6 +95,8 @@ const baseDir = () => path.join(process.env.LINKS_SESSIONS_DIR || path.join(data
 const slug = (name) => String(name || "browser").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "browser";
 /** The profile of the browser in use (one per browser: their cookie stores cannot be shared). */
 export const profileDir = (browser = findBrowser()) => path.join(baseDir(), `browser-profile-${slug(browser?.name)}`);
+/** The persistent profile of the Camoufox reader for one site (or host): <data>/sessions/camoufox/<name>. It keeps what the site gave the reader between reads. */
+export const camoufoxProfile = (name) => path.join(baseDir(), "camoufox", slug(name));
 export const cookiesPath = () => path.join(baseDir(), "cookies.txt");
 const statusPath = () => path.join(baseDir(), "status.json");
 

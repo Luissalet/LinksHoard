@@ -8,6 +8,7 @@
 import { cookiesFileFor, siteForUrl, sitesView, withCdp, withHeadless } from "./site-login.js";
 import { resolveTool } from "./media.js";
 import { runCapture } from "./hoard-commons/media.js";
+import { readWithCamoufox } from "./camoufox.js";
 
 export class PostError extends Error {
   constructor(message, { status = 400, code = "POST", site = null } = {}) { super(message); this.status = status; this.code = code; this.site = site; this.expose = true; }
@@ -102,7 +103,7 @@ export async function galleryPost(url, { resolve = resolveTool, run = runCapture
 const INTERNAL = /^https?:\/\/([a-z0-9-]+\.)?(x|twitter|instagram|threads|facebook|tiktok)\.(com|net)\/(?!.*\/status\/)/i;
 
 /** Read one post. */
-export async function readPost(input = {}, { headless = withHeadless, cdp = withCdp, resolver = resolveShort, gallery = galleryPost } = {}) {
+export async function readPost(input = {}, { headless = withHeadless, cdp = withCdp, resolver = resolveShort, gallery = galleryPost, camoufox = readWithCamoufox } = {}) {
   const url = String(input.url || "").trim();
   if (!/^https?:\/\//i.test(url)) throw new PostError("Hace falta la URL completa del post.", { code: "BAD_URL" });
   const site = siteForUrl(url);
@@ -134,6 +135,12 @@ export async function readPost(input = {}, { headless = withHeadless, cdp = with
   if ((!page || page.wall || page.error) && site && ["x", "instagram", "threads", "tiktok"].includes(site.id)) {
     const viaGallery = await gallery(url).catch(() => null);
     if (viaGallery) page = viaGallery;
+  }
+  // Still nothing (a wall, a refusal, no answer in time): the same page through Camoufox, a Firefox that does not look automated,
+  // when it is installed. It is given the session of "Iniciar sesión con…" and keeps a profile of its own per site.
+  if (!page || page.wall || page.error) {
+    const viaCamoufox = await camoufox(url, { script: extractScript(SETTLE_MS()), waitMs: WAIT_MS() }).catch(() => null);
+    if (viaCamoufox && !viaCamoufox.wall && !viaCamoufox.error) page = viaCamoufox;
   }
   return finish(url, site, session, page, resolver, browserFailed);
 }

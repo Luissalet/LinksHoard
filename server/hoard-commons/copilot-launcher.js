@@ -213,6 +213,18 @@
       if (currentKey) store.set(currentKey, event.detail && event.detail.sessionId);
     });
     element.addEventListener('faustus:turn-start', () => { busy = true; });
+    // A completed tool can already have saved changes while the model is still answering.
+    // Keep the panel and turn mounted; hosts only reload their own saved views.
+    element.addEventListener('faustus:event', (event) => {
+      const detail = event.detail || {};
+      if (detail.type !== 'tool_output') return;
+      window.dispatchEvent(new CustomEvent('hoard:copilot-change', { detail }));
+      try {
+        const host = window.hoardCopilot;
+        const refresh = host && (host.onChange || host.onTurnEnd);
+        if (typeof refresh === 'function') Promise.resolve(refresh.call(host, detail)).catch(() => {});
+      } catch { /* a host refresh must never interrupt the turn */ }
+    });
     element.addEventListener('faustus:turn-end', (event) => {
       busy = false;
       window.dispatchEvent(new CustomEvent('hoard:copilot-turn-end', { detail: event.detail || {} }));

@@ -24,7 +24,7 @@ Read **brief** (card + index) first. Literal material (transcript, OCR, post tex
 
 ## How it is made
 
-1. **Video and transcript**: the video insight job (see the README) downloads the video with the app's yt-dlp at 720p (readable screen text; public YouTube videos go through the fallback players when YouTube asks for a sign-in, and for posts that need an account the session saved with **Iniciar sesión con…** and then the browsers' cookies are tried; a digest that failed for lack of an account shows that button and starts again once the session is saved) and transcribes it through the family speech-to-text service (Funes, started through the Hub when it is down) or faster-whisper.
+1. **Video and transcript**: the video insight job (see the README) downloads the video with the app's yt-dlp at 720p (readable screen text; public YouTube videos go through the fallback players when YouTube asks for a sign-in, and for posts that need an account the session saved with **Iniciar sesión con…** and then the browsers' cookies are tried; a digest that failed for lack of an account shows that button and starts again once the session is saved) and transcribes it through the family speech-to-text service (Funes lives inside Talos's Hoard: when the service is down the Hub is asked to start Talos, and the transcription waits for it unless the app was stopped by hand in the Hub) or faster-whisper.
 2. **Visual pass over the whole video**: 64×36 grey thumbnails every 0.5 s (≤10 min), 1 s (≤1 h) or 2 s; a new segment starts when the picture drifts away from the segment's first frame (mean difference > 7.5 %); segments shorter than 2 s join their neighbour (a montage of fast cuts gives a few 2–4 s segments); at most 120 segments (the most alike neighbours are merged first); a segment that shows the same picture as an earlier one is a repeat and gets no frame of its own.
 3. **Screen text**: OCR of every distinct frame through Kafka's Hoard (`ocr_image`, started through the Hub when needed) or a local Tesseract; lines without two letters or digits are dropped; text identical to the previous frame's is noted as "the same as vN".
 4. **What the picture shows**: when the Hub serves a vision model, a one-or-two-sentence description, a kind (slide, code, chart, talking head…) and an "important" flag for frames the reader should actually look at; the longest 40 segments first. Without a vision model this layer is skipped and the card says so.
@@ -32,6 +32,16 @@ Read **brief** (card + index) first. Literal material (transcript, OCR, post tex
 6. **Files and search**: the layers above, the screen text in a full-text index next to the transcripts, an event `links.video.digest` on the family bus, and an optional copy to the export folder of the settings.
 
 A digest is idempotent: asking again for the same video and focus returns it as it is; a new focus reuses the visual pass, OCR and descriptions and only redoes chapters and summary; `force` redoes everything but the download and transcript (`redo_media` too). A digest made while an engine was missing (no speech-to-text, OCR or vision model running) stays **partial**, and asking again fills in only what was missing: the download, the frames on disk, the screen text and the descriptions already read are kept, only the frames left without text or caption are read again, and the summary is reused when the material it was written from (transcript, OCR, descriptions, focus) has not changed. Frames are read and described two at a time.
+
+## Posts of photos
+
+When the link is a carousel of photos (an Instagram or X post with pictures, a Threads post) there is no video to download: the digest asks yt-dlp what the post is made of (a carousel is a playlist with one entry per slide, and a photo slide carries its picture) and builds the same layers over the **pictures**, in order:
+
+- The pictures come from the post's own listing when they are large (no account needed), and from gallery-dl with the saved session (the originals) when the listed ones are only previews or none could be had. A slide that is a video shows its first frame and is marked as such. Up to 40 photos.
+- `card.md` has *Fotos: N* instead of the duration, the caption of the post as the literal post text, and **Foto abierta: N de M** when the link carries `?img_index=N`; `index.md` has one block per photo (title and summary generated, OCR, description) with the opened one marked ★; `visual.md` lists every photo with its literal text and its frame; `transcript.md` says there is no voice.
+- OCR and the vision description run on each photo; a photo with no text is read once and does not keep the digest partial. The chapters are the photos, so the summary reads the caption and every photo.
+- `video_digest_read` takes `from` / `to` as photo numbers (`from: 2, to: 4` reads photos 2 to 4); `video_frame` takes the photo number as `t` (left out: the photo the link opened) and returns the picture at the width asked; `video_find` names the photo of each hit (`foto 3`); `video_ask` can quote the caption (`p0`) and the text of any photo (`v3`).
+- If no picture can be had (a post that needs a session), the digest fails saying the pictures could not be downloaded, with the **Iniciar sesión con…** button when the site has one.
 
 ## After the digest
 
@@ -59,5 +69,7 @@ Needs ffmpeg. The summary and chapter titles need a text model served by the Hub
 ---
 
 ## En español
+
+Una publicación de fotos (carrusel) también se digiere: se leen las fotos en orden (las que lista la publicación, o los originales con gallery-dl y la sesión guardada), con el texto de la publicación, el OCR y la descripción de cada una, un resumen y la foto que traía el enlace (`?img_index=7`) marcada. `video_frame` recibe el número de foto, `from` / `to` de `video_digest_read` también.
 
 El digest de vídeo hace en tu PC lo que a un asistente le costaría miles de tokens: descarga el vídeo (tweet, YouTube, reel o un archivo), lo transcribe, recorre la imagen entera, lee el texto en pantalla, agrupa en capítulos y resume con los modelos locales del Hub, y deja un dossier por capas (ficha, índice, pantalla, transcripción, mosaico, fotogramas). Lo literal (transcripción, OCR) y lo generado (marcado *(generado)*) van siempre separados. Después se le pregunta al vídeo con citas comprobadas (`video_ask`), se busca en él (`video_find`) o se saca el fotograma exacto de un instante (`video_frame`). En la app: página **Vídeos** y panel **Digest para asistentes** de cada enlace; ajustes en **Ajustes → Digest de vídeos**.

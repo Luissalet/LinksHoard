@@ -107,7 +107,7 @@ export function normalizeMediaUrl(input) {
 }
 
 /** The part of the SSRF guard that needs DNS: a public-looking name that resolves to a private address. An unresolvable name passes (yt-dlp reports it). */
-async function refusePrivateResolution(url) {
+export async function refusePrivateResolution(url) {
   if (allowPrivateUrls()) return;
   let reason = null;
   try {
@@ -673,15 +673,21 @@ function sectionRuns(sections) {
 }
 
 /** yt-dlp options common to the probes: the shared base (--ignore-config, JS runtime) for the build found. */
-const probeArgs = (ytdlp, url, cookie, playlist = false) => buildProbeArgs({ url, playlist, cookie, ytdlpVersion: ytdlp.version });
+const probeArgs = (ytdlp, url, cookie, playlist = false, lenient = false) => {
+  const args = buildProbeArgs({ url, playlist, cookie, ytdlpVersion: ytdlp.version });
+  if (!lenient) return args;
+  // a slide without video formats (a photo of a carousel) is then a slide with its picture, not the end of the whole answer
+  const end = args.lastIndexOf("--");
+  return [...args.slice(0, end), "--ignore-no-formats-error", ...args.slice(end)];
+};
 
 /**
  * yt-dlp --dump-single-json for one cookie attempt, parsed. The whole line is collected here: runProcess keeps only the last 64 KB of
  * output and the JSON of a long video (every format of every stream) is larger than that.
  */
-async function ytdlpJson(ytdlp, url, cookie, { playlist = false, signal } = {}) {
+async function ytdlpJson(ytdlp, url, cookie, { playlist = false, lenient = false, signal } = {}) {
   let text = "";
-  const r = await runProcess(ytdlp.command, probeArgs(ytdlp, url, cookie, playlist), { signal, timeoutMs: 90_000, onStdoutLine: (line) => { text += line; } });
+  const r = await runProcess(ytdlp.command, probeArgs(ytdlp, url, cookie, playlist, lenient), { signal, timeoutMs: 90_000, onStdoutLine: (line) => { text += line; } });
   if (r.code !== 0) throw explainFailure("yt-dlp", r.stderr, { code: r.code });
   try { return JSON.parse(text); } catch { throw new MediaError("yt-dlp no devolvió información legible sobre este enlace."); }
 }
@@ -1156,6 +1162,65 @@ export async function probeUrl(input = {}) {
     is_playlist: isPlaylist, entries: isPlaylist ? info.entries.length : undefined,
     entry_titles: isPlaylist ? info.entries.slice(0, 10).map((e) => e?.title || e?.id || "") : undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// inspect: what a post is made of, slide by slide
+// ---------------------------------------------------------------------------
+
+const hasVideoFormats = (e) => Array.isArray(e?.formats) && e.formats.some((f) => f && f.vcodec !== "none" && (f.url || f.manifest_url || f.fragments));
+
+/** The picture of a slide that has none to play: its largest thumbnail (width x height, else the last one listed). */
+export function bestThumbnail(entry) {
+  const list = (Array.isArray(entry?.thumbnails) ? entry.thumbnails : []).filter((t) => t && /^https?:\/\//i.test(String(t.url || "")));
+  const area = (t) => (Number(t.width) || 0) * (Number(t.height) || 0) || Number(t.width) || 0;
+  const sorted = [...list].sort((a, b) => area(a) - area(b));
+  const top = sorted.length ? sorted[sorted.length - 1] : null;
+  if (top && area(top)) return { url: String(top.url), width: Number(top.width) || 0, height: Number(top.height) || 0 };
+  if (top) return { url: String(top.url), width: 0, height: 0 };
+  return typeof entry?.thumbnail === "string" && /^https?:\/\//i.test(entry.thumbnail) ? { url: entry.thumbnail, width: 0, height: 0 } : null;
+}
+
+const dateOf = (info) => {
+  if (info?.upload_date) return String(info.upload_date);
+  return Number(info?.timestamp) > 0 ? new Date(Number(info.timestamp) * 1000).toISOString().slice(0, 10).replace(/-/g, "") : "";
+};
+
+/**
+ * The yt-dlp description of a link read as a post: { kind: "photos" | "video", slides: [{ n, has_video, image_url, width, height }], meta }.
+ * A carousel is a playlist with one entry per slide; a slide with video formats is a video, one without them but with a picture is a photo.
+ * "photos" when at least one slide is a photo; a post of only videos (or one with nothing readable) stays "video", the way it always was.
+ */
+export function describePost(info, { platform = "" } = {}) {
+  const entries = info?._type === "playlist" && Array.isArray(info.entries) ? info.entries.filter(Boolean) : [info || {}];
+  const slides = entries.map((e, i) => {
+    const video = hasVideoFormats(e);
+    const image = bestThumbnail(e);
+    return { n: i + 1, has_video: video, image_url: image?.url || "", width: image?.width || 0, height: image?.height || 0 };
+  });
+  const photos = slides.filter((x) => !x.has_video && x.image_url).length;
+  const first = entries[0] || {};
+  const pick = (k) => (typeof info?.[k] === "string" && info[k].trim() ? info[k] : typeof first[k] === "string" ? first[k] : "");
+  return {
+    kind: photos ? "photos" : "video", slides, photos, platform,
+    meta: {
+      title: info?._type === "playlist" ? pick("title") : (info?.title || ""), uploader: info?.uploader || info?.channel || first.uploader || first.channel || "",
+      upload_date: dateOf(info) || dateOf(first), description: pick("description"), platform, duration: Number(info?.duration) || null,
+    },
+    headers: info?.http_headers && typeof info.http_headers === "object" ? info.http_headers : (first.http_headers || {}),
+  };
+}
+
+/** Ask yt-dlp what a link is made of, tolerating slides without video: { url, kind, slides, meta, ... } (see describePost). Throws like probeUrl. */
+export async function inspectPost(input = {}, { signal } = {}) {
+  const data = probeInput.pick({ url: true, cookies_browser: true }).parse(input);
+  const url = normalizeMediaUrl(data.url);
+  await refusePrivateResolution(url);
+  const platform = detectPlatform(url);
+  const ytdlp = await resolveTool("ytdlp");
+  if (!ytdlp.found) throw missingTool("ytdlp");
+  const { value: info } = await withCookieAttempts(data.cookies_browser, (cookie) => ytdlpJson(ytdlp, url, cookie, { lenient: true, signal }), url);
+  return { url, ...describePost(info, { platform }) };
 }
 
 // ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ export default function Videos() {
                 <a className="min-w-0 flex-1 truncate font-semibold text-[14px] hover:underline" href={`#/link/${d.link_id}`}>{d.title || d.url}</a>
                 <span className="flex flex-wrap items-center gap-2 text-[12px]">
                   {d.duration_s ? <span className="help">{formatDuration(d.duration_s)}</span> : null}
+                  {d.photos ? <span className="help">{d.photos} fotos</span> : null}
                   {d.tokens ? <span className="chip">≈ {d.tokens} tokens</span> : null}
                   <span className={CHIP[d.status] || "chip"} title={d.detail || ""}>{d.status === "running" && d.stage ? `Procesando · ${d.stage}` : (DIGEST_STATUS[d.status] || d.status).replace(/\.$/, "")}</span>
                 </span>

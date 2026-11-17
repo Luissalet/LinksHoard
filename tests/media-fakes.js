@@ -7,6 +7,8 @@
 //   /vp9/<id>        like /video but the file is marked as VP9 (ffmpeg then transcodes it)
 //   /photos/<id>     yt-dlp: "There is no video in this post"; gallery-dl: two jpg + metadata
 //   /nometa/<id>     gallery-dl without any metadata sidecar
+//   /carousel/<id>   a carousel: yt-dlp lists $FAKE_SLIDES (4) slides, the first a video and the others photos whose pictures are served at
+//                    $FAKE_IMG_BASE/img/<n>.jpg (1080 px); gallery-dl needs a login. /carouselsmall/<id>: the listed pictures are 320 px
 //   /private/<id>    needs login: only succeeds with --cookies-from-browser chrome
 //   /gone/<id>       "Video unavailable"
 //   /slow/<id>       prints progress and then hangs, with a grandchild process (cancel tests)
@@ -54,6 +56,18 @@ const version = () => { try { return fs.readFileSync(versionFile, "utf8").trim()
   if (kind === "agegate" && !String(arg("--cookies") || "").includes("sessions")) { console.error("ERROR: [youtube] " + id + ": Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication."); process.exit(1); }
   if (has("--dump-single-json")) {
     if (kind === "photos") { console.error("ERROR: [Instagram] " + id + ": There is no video in this post"); process.exit(1); }
+    if (kind === "carousel" || kind === "carouselsmall") {
+      if (!has("--ignore-no-formats-error")) { console.error("ERROR: [Instagram] " + id + ": No video formats found!; please report this issue"); process.exit(1); }
+      const base = process.env.FAKE_IMG_BASE || "http://127.0.0.1:1";
+      const side = kind === "carousel" ? 1080 : 320;
+      const entries = [];
+      for (let i = 1; i <= Number(process.env.FAKE_SLIDES || 4); i++) {
+        entries.push({ id: id + "_" + i, title: "Post by autor_test", thumbnails: [{ url: base + "/img/" + i + "-tiny.jpg", width: 150, height: 150 }, { url: base + "/img/" + (kind === "carouselsmall" ? "small-" : "") + i + ".jpg", width: side, height: side }],
+          formats: i === 1 ? [{ format_id: "v", vcodec: "h264", acodec: "aac", url: "http://x/v.mp4" }] : [] });
+      }
+      console.log(JSON.stringify({ _type: "playlist", id, title: "Post by autor_test", description: "Pie de la publicación de prueba", uploader: "Autor de prueba", timestamp: 1790000000, http_headers: { Referer: "https://www.instagram.com/" }, entries }));
+      return;
+    }
     if (kind === "gone") { console.error("ERROR: [youtube] " + id + ": Video unavailable"); process.exit(1); }
     if (kind === "list") {
       console.log(JSON.stringify({ _type: "playlist", title: "Lista de prueba", entries: [{ id: "a", title: "Uno" }, { id: "b", title: "Dos" }] }));
@@ -148,13 +162,15 @@ const versionFile = path.join(dir, "gallerydl-version");
   }
   if (kind === "gone") { console.error("[instagram][error] NotFoundError: post not found"); process.exit(8); }
   if (kind === "weird") { console.error("[gallery-dl][error] Unsupported URL '" + url + "'"); process.exit(64); }
-  if (kind === "private" && cookie !== "chrome") { console.error("[instagram][error] AuthRequired: 'login required'"); process.exit(16); }
+  if ((kind === "private" && cookie !== "chrome") || kind === "carousel" || kind === "carouselsmall") { console.error("[instagram][error] AuthRequired: 'login required'"); process.exit(16); }
   if (kind === "empty") { return; }
   const out = arg("-D");
   fs.mkdirSync(out, { recursive: true });
   for (const n of [1, 2]) {
     const file = path.join(out, "photo_" + n + ".jpg");
-    fs.writeFileSync(file, Buffer.alloc(2048, n));
+    // FAKE_PHOTO_SRC: a folder with real pictures (1.jpg, 2.jpg) to hand out instead of two blobs of bytes
+    if (process.env.FAKE_PHOTO_SRC && fs.existsSync(path.join(process.env.FAKE_PHOTO_SRC, n + ".jpg"))) fs.copyFileSync(path.join(process.env.FAKE_PHOTO_SRC, n + ".jpg"), file);
+    else fs.writeFileSync(file, Buffer.alloc(2048, n));
     if (kind !== "nometa") fs.writeFileSync(file + ".json", JSON.stringify({ description: "Pie de foto de prueba\\nsegunda línea", username: "autor_test", date: "2026-09-30 10:00:00", post_shortcode: id }));
     console.log(file);
     await sleep(10);

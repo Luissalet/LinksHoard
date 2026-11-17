@@ -3,6 +3,7 @@
 import * as media from "./media.js";
 import * as sessions from "./site-login.js";
 import { readPost } from "./post-reader.js";
+import { camoufoxStatus } from "./camoufox.js";
 
 const notFound = (res) => res.status(404).json({ error: "No existe esa descarga." });
 const truthy = (v) => v === "1" || v === "true" || v === true;
@@ -13,7 +14,10 @@ export function installMediaRoutes(app) {
   });
 
   app.get("/api/media/tools", async (req, res, next) => {
-    try { res.json(await media.toolsStatus({ refresh: truthy(req.query.refresh) })); } catch (e) { next(e); }
+    try {
+      const refresh = truthy(req.query.refresh);
+      res.json({ ...(await media.toolsStatus({ refresh })), camoufox: await camoufoxStatus({ fresh: refresh }) });
+    } catch (e) { next(e); }
   });
   app.post("/api/media/tools/update", async (req, res, next) => {
     try {

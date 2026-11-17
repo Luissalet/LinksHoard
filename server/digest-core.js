@@ -298,6 +298,11 @@ const KIND_ES = {
 };
 export const kindLabel = (k) => KIND_ES[k] || k || "";
 
+/** A post of photos (a carousel) has no time: its items are numbered. */
+export const isPhotos = (m) => m?.media === "photos";
+/** How one item of the digest is named: "0:12–0:20" for a video segment, "foto 3 de 7" for a photo. */
+export const itemLabel = (m, v) => (isPhotos(m) ? `foto ${v.idx}${m.photos ? ` de ${m.photos}` : ""}` : span(v.start, v.end));
+
 const fence = (text) => {
   const body = String(text || "");
   const ticks = body.includes("```") ? "````" : "```";
@@ -312,17 +317,22 @@ const gen = (model) => `*(generado${model ? ` · ${model}` : ""})*`;
 function sourceLines(m) {
   const lines = [];
   lines.push(`- **Fuente:** ${m.url || "(archivo local)"}${m.platform ? ` · ${m.platform}` : ""}`);
-  const who = [m.uploader && `**Autor:** ${m.uploader}`, m.upload_date && `**Fecha:** ${m.upload_date}`, m.duration && `**Duración:** ${clock(m.duration)}`,
+  const who = [m.uploader && `**Autor:** ${m.uploader}`, m.upload_date && `**Fecha:** ${m.upload_date}`,
+    isPhotos(m) ? (m.photos && `**Fotos:** ${m.photos}`) : (m.duration && `**Duración:** ${clock(m.duration)}`),
     m.width && m.height && `**Formato:** ${m.width}×${m.height}`, m.language && `**Idioma:** ${m.language}`].filter(Boolean);
   if (who.length) lines.push(`- ${who.join(" · ")}`);
   return lines;
 }
 
-/** The card: what the video is, the generated summary and what reading more would cost. */
+/** The card: what the video (or the post of photos) is, the generated summary and what reading more would cost. */
 export function renderCard(m, tokens = {}) {
-  const out = [`# ${m.title || "Vídeo sin título"}`, ""];
-  out.push(`> Digest de vídeo de Links Hoard (${m.generated_at || ""}). La transcripción y el texto en pantalla (OCR) son literales; lo marcado *(generado)* lo escribió un modelo local y puede equivocarse: compruébalo con su marca de tiempo.`, "");
+  const photos = isPhotos(m);
+  const out = [`# ${m.title || (photos ? "Publicación de fotos sin título" : "Vídeo sin título")}`, ""];
+  out.push(photos
+    ? `> Digest de una publicación de fotos de Links Hoard (${m.generated_at || ""}). El texto de la publicación y el texto en pantalla (OCR) son literales; lo marcado *(generado)* lo escribió un modelo local y puede equivocarse: compruébalo con la foto que se cita.`
+    : `> Digest de vídeo de Links Hoard (${m.generated_at || ""}). La transcripción y el texto en pantalla (OCR) son literales; lo marcado *(generado)* lo escribió un modelo local y puede equivocarse: compruébalo con su marca de tiempo.`, "");
   out.push("## Ficha", "", ...sourceLines(m));
+  if (photos && m.focus_photo) out.push(`- **Foto abierta:** ${m.focus_photo}${m.photos ? ` de ${m.photos}` : ""} (la que traía el enlace)`);
   if (m.post_text) out.push("", "**Texto de la publicación** (literal):", "", fence(oneLine(m.post_text, 3000)));
   const s = m.summary;
   if (m.focus) out.push("", `**Foco pedido:** ${m.focus}`);
@@ -335,24 +345,31 @@ export function renderCard(m, tokens = {}) {
   const t = tokens;
   if (t.full) {
     out.push("", "**Coste de leer más** (tokens aprox.):",
-      `- index.md (capítulos): ~${t.index} · visual.md (pantalla, OCR): ~${t.visual} · ${t.sound ? `sound.md (música, efectos): ~${t.sound} · ` : ""}transcript.md (literal): ~${t.transcript} · digest.md (todo): ~${t.full}`);
-    if (t.overview_image) out.push(`- overview.jpg (mosaico de ${m.overview_tiles || 0} fotogramas con su tiempo): ~${t.overview_image}`);
+      photos
+        ? `- index.md (foto a foto): ~${t.index} · visual.md (cada foto, OCR): ~${t.visual} · digest.md (todo): ~${t.full}`
+        : `- index.md (capítulos): ~${t.index} · visual.md (pantalla, OCR): ~${t.visual} · ${t.sound ? `sound.md (música, efectos): ~${t.sound} · ` : ""}transcript.md (literal): ~${t.transcript} · digest.md (todo): ~${t.full}`);
+    if (t.overview_image) out.push(photos ? `- overview.jpg (mosaico de ${m.overview_tiles || 0} fotos con su número): ~${t.overview_image}` : `- overview.jpg (mosaico de ${m.overview_tiles || 0} fotogramas con su tiempo): ~${t.overview_image}`);
     if (t.naive_5s) out.push(`- Para comparar, mirar el vídeo a un fotograma cada 5 s costaría ~${t.naive_5s}.`);
+    if (photos && t.photos_image) out.push(`- Para comparar, mirar las ${m.photos} fotos costaría ~${t.photos_image}.`);
   }
-  out.push("", "**Cómo pedir más:** video_digest_read (capa o tramo de tiempo: card, index, visual, sound, transcript, full), video_ask (pregunta con citas), video_find (buscar palabras, texto en pantalla o sonidos), video_frame (fotograma exacto en un instante), audio_describe / audio_timeline (analizar el sonido a fondo).");
+  out.push("", photos
+    ? "**Cómo pedir más:** video_digest_read (capa: card, index, visual, full), video_ask (pregunta con citas), video_find (buscar palabras o texto en pantalla), video_frame (una foto por su número)."
+    : "**Cómo pedir más:** video_digest_read (capa o tramo de tiempo: card, index, visual, sound, transcript, full), video_ask (pregunta con citas), video_find (buscar palabras, texto en pantalla o sonidos), video_frame (fotograma exacto en un instante), audio_describe / audio_timeline (analizar el sonido a fondo).");
   return out.join("\n");
 }
 
-/** The index: one block per chapter. */
+/** The index: one block per chapter (one per photo, for a post of photos). */
 export function renderIndex(m) {
-  const out = ["## Índice por capítulos", ""];
+  const photos = isPhotos(m);
+  const out = [photos ? "## Índice de fotos" : "## Índice por capítulos", ""];
   if ((m.visual || []).some((v) => v.caption)) out.push(`> En los planos, *(gen.)* marca la descripción generada${m.vision_model ? ` por ${m.vision_model}` : ""}; «texto» es OCR literal.`, "");
   const chapters = m.chapters || [];
-  if (!chapters.length) return [...out, "(sin capítulos: el vídeo no tiene ni voz ni imagen analizable)"].join("\n");
+  if (!chapters.length) return [...out, photos ? "(sin fotos analizables)" : "(sin capítulos: el vídeo no tiene ni voz ni imagen analizable)"].join("\n");
   const model = m.summary?.model || m.chapter_model || "";
   for (const c of chapters) {
-    const star = c.focus ? " ★" : "";
-    out.push(`### ${c.id} · [${span(c.start, c.end)}] ${c.title ? `${c.title} ${gen(model)}` : ""}${star}`.trimEnd());
+    const star = c.focus ? " ★" : (c.opened ? " ★ la que traía el enlace" : "");
+    const head = photos ? `### ${c.id} · foto ${c.id}${m.photos ? ` de ${m.photos}` : ""}` : `### ${c.id} · [${span(c.start, c.end)}]`;
+    out.push(`${head} ${c.title ? `${c.title} ${gen(model)}` : ""}${star}`.trimEnd());
     if (c.summary) out.push(`${c.summary} ${gen(model)}`);
     else if (c.said) out.push(`Dice (literal, inicio): «${oneLine(c.said, 220)}»`);
     const heard = soundIn(m, c.start, c.end);
@@ -363,7 +380,7 @@ export function renderIndex(m) {
       .map((v, i) => ({ v, i })).sort((a, b) => (b.v.important ? 1 : 0) - (a.v.important ? 1 : 0) || a.i - b.i)
       .slice(0, 5).sort((a, b) => a.i - b.i).map((x) => x.v);
     for (const v of shown) {
-      const bits = [`v${v.idx} [${clock(v.start)}]`];
+      const bits = [photos ? `foto ${v.idx}${v.slide_video ? " (vídeo: primer fotograma)" : ""}` : `v${v.idx} [${clock(v.start)}]`];
       if (v.kind) bits.push(kindLabel(v.kind));
       if (v.caption && (!v.ocr || v.important)) bits.push(`${oneLine(v.caption, 110)} *(gen.)*`);
       if (v.ocr) bits.push(`texto: «${oneLine(v.ocr, 140)}»`);
@@ -371,23 +388,26 @@ export function renderIndex(m) {
       bits.push(v.file);
       out.push(`- ${bits.join(" · ")}`);
     }
-    if (screens.length > shown.length) out.push(`- (+${screens.length - shown.length} planos más en visual.md)`);
+    if (!photos && screens.length > shown.length) out.push(`- (+${screens.length - shown.length} planos más en visual.md)`);
     out.push("");
   }
   return out.join("\n").trimEnd();
 }
 
-/** Every visual segment, with its literal screen text. */
+/** Every visual segment (or photo), with its literal screen text. */
 export function renderVisual(m, { from = 0, to = Infinity } = {}) {
-  const out = ["## Pista visual", ""];
+  const photos = isPhotos(m);
+  const out = [photos ? "## Las fotos" : "## Pista visual", ""];
   const items = (m.visual || []).filter((v) => v.end > from && v.start < to);
-  if (!items.length) return [...out, "(sin imagen)"].join("\n");
+  if (!items.length) return [...out, photos ? "(sin fotos)" : "(sin imagen)"].join("\n");
   for (const v of items) {
     if (v.same_as !== null && v.same_as !== undefined) {
       out.push(`- **v${v.idx}** [${span(v.start, v.end)}] · vuelve el mismo plano que v${v.same_as}`);
       continue;
     }
-    const head = [`**v${v.idx}** [${span(v.start, v.end)}]`, v.kind && kindLabel(v.kind), v.important && "★ conviene verlo", v.file].filter(Boolean);
+    const head = photos
+      ? [`**foto ${v.idx}**${m.photos ? ` de ${m.photos}` : ""}`, v.opened && "★ la que traía el enlace", v.slide_video && "diapositiva de vídeo (se ve su primer fotograma)", v.important && "conviene verlo", v.file].filter(Boolean)
+      : [`**v${v.idx}** [${span(v.start, v.end)}]`, v.kind && kindLabel(v.kind), v.important && "★ conviene verlo", v.file].filter(Boolean);
     out.push(`- ${head.join(" · ")}`);
     if (v.caption) out.push(`  - Se ve ${gen(m.vision_model)}: ${v.caption}`);
     if (v.ocr_same_as !== null && v.ocr_same_as !== undefined) out.push(`  - Texto en pantalla: el mismo que v${v.ocr_same_as}`);
@@ -447,6 +467,7 @@ export function renderSound(m, { from = 0, to = Infinity } = {}) {
 
 /** The literal transcript in timed paragraphs. */
 export function renderTranscript(m, { from = 0, to = Infinity } = {}) {
+  if (isPhotos(m)) return ["## Transcripción", "", "(una publicación de fotos no tiene voz: su texto está en la ficha y lo que se ve, foto a foto, en visual.md)"].join("\n");
   const t = m.transcript || {};
   const how = [t.via, t.model, t.language].filter(Boolean).join(" · ");
   const out = [`## Transcripción (literal${how ? `, ${how}` : ""})`, ""];

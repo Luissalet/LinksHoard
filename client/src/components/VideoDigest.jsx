@@ -97,12 +97,15 @@ export default function VideoDigest({ linkId, kind, notify }) {
             <span className="chip">Todo ≈ {fmt(t.full)}</span>
             {t.overview_image ? <span className="chip">Mosaico ≈ {fmt(t.overview_image)}</span> : null}
             {t.naive_5s ? <span className="chip chip-warn">Fotograma cada 5 s ≈ {fmt(t.naive_5s)}</span> : null}
-            {view.stats?.chapters ? <span className="chip">{view.stats.chapters} capítulos · {view.stats.distinct_frames} planos · {view.stats.ocr_frames} con texto</span> : null}
+            {t.photos_image ? <span className="chip chip-warn">Mirar las fotos ≈ {fmt(t.photos_image)}</span> : null}
+            {view.stats?.media === "photos"
+              ? <span className="chip">{view.stats.photos} fotos · {view.stats.ocr_frames} con texto{view.stats.focus_photo ? ` · la ${view.stats.focus_photo} es la del enlace` : ""}</span>
+              : view.stats?.chapters ? <span className="chip">{view.stats.chapters} capítulos · {view.stats.distinct_frames} planos · {view.stats.ocr_frames} con texto</span> : null}
           </div>
           {notes.length > 0 && <ul className="help mt-2 list-disc pl-5 text-[12px]">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
           {view.files?.overview && (
             <a href={api.videoDigest.fileUrl(linkId, "overview.jpg")} target="_blank" rel="noreferrer" className="mt-3 block">
-              <img src={api.videoDigest.fileUrl(linkId, "overview.jpg")} alt="Mosaico de fotogramas con su tiempo" loading="lazy" style={{ maxHeight: 360, maxWidth: "100%", borderRadius: 6 }} />
+              <img src={api.videoDigest.fileUrl(linkId, "overview.jpg")} alt={view.stats?.media === "photos" ? "Mosaico de fotos con su número" : "Mosaico de fotogramas con su tiempo"} loading="lazy" style={{ maxHeight: 360, maxWidth: "100%", borderRadius: 6 }} />
             </a>
           )}
           <div className="mt-4 flex flex-wrap items-center gap-2" role="tablist">

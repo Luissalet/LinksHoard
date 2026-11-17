@@ -18,7 +18,8 @@ import { db, now, getSetting, setSetting, isOpen, dataDir, ftsEnabled, transacti
 import * as links from "./links.js";
 import * as media from "./media.js";
 import { runProcess, runCapture } from "./hoard-commons/media.js";
-import { transcribe as famTranscribe, serviceAvailable } from "./hoard-commons/fam-services.js";
+import { transcribe as famTranscribe } from "./hoard-commons/fam-services.js";
+import { ensureService } from "./fam-start.js";
 import * as sentidos from "./sentidos.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -301,8 +302,10 @@ let sttOverride = null;
 /** Tests (or an embedding app) replace the providers with one function: (wavPath, { language, signal }) => { ok, text, segments, language, via, model } | { ok: false, kind, error }. */
 export function setSttProvider(fn) { const old = sttOverride; sttOverride = fn || null; return old; }
 
-async function famProvider(wav, { language }) {
-  if (!(await serviceAvailable("stt"))) return { ok: false, kind: "unavailable", error: "El servicio de transcripción de la familia (Funes) no está disponible." };
+async function famProvider(wav, { language, signal }) {
+  // Funes lives inside Talos: when the service is down, the Hub is asked to start the app that owns it and the service is waited for
+  const up = await ensureService("stt", "funes", { waitS: 90, signal });
+  if (!up.ok) return { ok: false, kind: "unavailable", error: `El servicio de transcripción de la familia (Funes, dentro de Talos) no está disponible: ${up.error}.` };
   const r = await famTranscribe(wav, { language: language || "auto", timeoutS: 900 });
   if (r.ok) return { ok: true, text: r.text, segments: r.segments, language: r.language, via: "funes", model: r.model };
   const unavailable = ["hub_down", "app_down", "app_missing", "tool_missing"].includes(r.kind);

@@ -43,12 +43,14 @@ Funciona como un Hoard propio, con su servidor, puerto, carpeta de datos y puent
 - Vídeo, audio y publicaciones de fotos de YouTube, X, Instagram, TikTok, SoundCloud, Vimeo, Twitch, Reddit, Facebook, Bilibili y cualquier otro sitio que admita yt-dlp, usando yt-dlp, gallery-dl y ffmpeg como programas aparte.
 - Formatos `video` (MP4), `audio` (MP3), `image` o `auto`; elección de calidad, tramos y listas de reproducción opcionales; cola de una en una con progreso, cancelación y reintento.
 - Un botón «Iniciar sesión con <sitio>» para publicaciones privadas, con el perfil de navegador propio de la app; inicias sesión tú, nunca el asistente.
+- Leer una publicación social como texto (`read_post`) prueba primero el perfil de navegador de la app, después gallery-dl con la sesión guardada y, si está instalado, Camoufox: un Firefox que no parece automatizado, con un perfil persistente por sitio dentro de la carpeta de sesiones y las cookies de la sesión guardada.
 - yt-dlp se actualiza solo cuando envejece o falla como falla una versión antigua.
 - Las descargas terminadas se pueden guardar como enlaces con la etiqueta `descarga`.
 
 ### Vídeo
 - **Análisis**: transcripción con marcas de tiempo (Funes a través de Hoard Link, o faster-whisper local) y hasta 24 fotogramas clave por cambio de escena; la transcripción es buscable.
 - **Digest**: descarga, transcribe, lee el texto en pantalla por OCR y escribe capítulos y un resumen con los modelos locales del Hub en un dosier por capas que un asistente puede leer barato, interrogar y buscar. Véase [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
+- **Publicaciones de fotos**: un carrusel (Instagram, X, Threads…) se digiere foto a foto, con las mismas capas: el texto de la publicación, OCR y descripción de cada foto, un resumen y la foto que traía el enlace (`?img_index=7`) marcada. Las preguntas, la búsqueda y `video_frame` (por número de foto) funcionan sobre él.
 
 ### Escuchar
 - Narra un artículo guardado (o el digest de un vídeo) con Prospero's Hoard, frase a frase como tarea en segundo plano, con el audio guardado en local.
@@ -88,6 +90,7 @@ npm start          # http://127.0.0.1:5181
 | `LINKS_WHISPER_MODEL` | Modelo faster-whisper local para la transcripción de reserva. |
 | `LINKS_SENTIDOS_VENV`, `LINKS_SENTIDOS_HOME` | Entorno Python y carpeta del motor Sentidos. |
 | `LINKS_COOKIES_FILE`, `LINKS_SESSIONS_DIR` | Archivo de cookies y carpeta de sesiones de inicio de sesión para publicaciones privadas. |
+| `LINKS_CAMOUFOX_PYTHON` | Python que tiene Camoufox (`python -m pip install camoufox` y después `python -m camoufox fetch`); `media_tools` dice si lo encontró. |
 
 El servidor solo responde a peticiones cuyo `Host` sea `localhost`, `127.0.0.1` o `[::1]`; para acceder desde el móvil por un túnel, añade los nombres de host del túnel a `LINKS_ALLOWED_HOSTS`.
 

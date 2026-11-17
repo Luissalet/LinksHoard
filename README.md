@@ -43,12 +43,14 @@ It runs as its own Hoard with its own server, port, data folder and MCP bridge. 
 - Video, audio and photo posts from YouTube, X, Instagram, TikTok, SoundCloud, Vimeo, Twitch, Reddit, Facebook, Bilibili and any other site yt-dlp supports, using yt-dlp, gallery-dl and ffmpeg as separate programs.
 - Formats `video` (MP4), `audio` (MP3), `image` or `auto`; quality choice, sections, optional playlists; a one-at-a-time queue with progress, cancel and retry.
 - A "Sign in with <site>" button for private posts, using the app's own browser profile; the user signs in, never the assistant.
+- Reading a social post as text (`read_post`) tries the app's browser profile first, then gallery-dl with the saved session, then Camoufox when it is installed: a Firefox that does not look automated, with a persistent profile per site under the sessions folder, given the saved session's cookies.
 - yt-dlp refreshes itself when it gets old or fails the way an outdated build does.
 - Finished downloads can be saved as links tagged `descarga`.
 
 ### Video
 - **Insight**: a transcript with timestamps (Funes through Hoard Link, or local faster-whisper) and up to 24 scene-change key frames; the transcript is searchable.
 - **Digest**: download, transcribe, read on-screen text by OCR and write chapters and a summary with the Hub's local models into a layered dossier an assistant can read cheaply, ask questions of and search. See [docs/VIDEO_DIGEST.md](docs/VIDEO_DIGEST.md).
+- **Photo posts**: a carousel of photos (Instagram, X, Threads…) is digested picture by picture, with the same layers: the caption, OCR and a description of each photo, a summary, and the photo the link opened (`?img_index=7`) marked. Questions, search and `video_frame` (by photo number) work on it.
 
 ### Listen
 - Narrate a saved article (or a video's digest) through Prospero's Hoard, sentence by sentence as a background job, with the audio stored locally.
@@ -88,6 +90,7 @@ npm start          # http://127.0.0.1:5181
 | `LINKS_WHISPER_MODEL` | Local faster-whisper model for the transcript fallback. |
 | `LINKS_SENTIDOS_VENV`, `LINKS_SENTIDOS_HOME` | Python environment and home of the Sentidos engine. |
 | `LINKS_COOKIES_FILE`, `LINKS_SESSIONS_DIR` | Cookies file and sign-in session folder for private posts. |
+| `LINKS_CAMOUFOX_PYTHON` | Python that has Camoufox (`python -m pip install camoufox`, then `python -m camoufox fetch`); `media_tools` says whether it was found. |
 
 The server answers only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]`; to reach it from a phone through a tunnel, add the tunnel's host names to `LINKS_ALLOWED_HOSTS`.
 

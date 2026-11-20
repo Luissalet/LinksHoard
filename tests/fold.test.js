@@ -49,8 +49,8 @@ test("PDF, DOCX and EPUB become paragraphs; arXiv abstract pages point at their 
   assert.deepEqual(p.contentText.split("\n"), ["1 Introduction",
     "Folding keeps the literal text apart from what a model writes, so a reader can check every summary against its source.",
     "A second paragraph after a wide gap.", "2 Method", "We split the text into sections.", "3 Results", "The levels read from five to one."]);
-  const w = await extractDocument(docx(["Título", "Primer párrafo con |dos runs.", "Tercero & último."], { title: "Mi DOCX", author: "Luis" }), {});
-  assert.deepEqual({ ...w }, { kind: "document", title: "Mi DOCX", byline: "Luis", lang: "es", contentText: "Título\nPrimer párrafo con dos runs.\nTercero & último." });
+  const w = await extractDocument(docx(["Título", "Primer párrafo con |dos runs.", "Tercero & último."], { title: "Mi DOCX", author: "Equipo editorial" }), {});
+  assert.deepEqual({ ...w }, { kind: "document", title: "Mi DOCX", byline: "Equipo editorial", lang: "es", contentText: "Título\nPrimer párrafo con dos runs.\nTercero & último." });
   const e = await extractDocument(epub(["<h1>Capítulo uno</h1><p>Texto del primero.</p>", "<h2>Capítulo dos</h2><p>Más texto.</p>"], { title: "Mi libro", author: "Ana" }), {});
   assert.equal(e.title, "Mi libro"); assert.equal(e.contentText, "Capítulo uno\nTexto del primero.\nCapítulo dos\nMás texto.");
   assert.equal(arxivPdf("https://arxiv.org/abs/2401.01234v2"), "https://arxiv.org/pdf/2401.01234v2");

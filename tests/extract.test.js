@@ -20,17 +20,17 @@ test("extractHtml falls back to title + meta description + stripped body for thi
 });
 
 test("extractHtml on a Wikipedia-like page: infobox/navbox/references/toc stripped, tables stay readable", () => {
-  const out = extractHtml(FIXTURE_WIKI, "https://es.wikipedia.org/wiki/Jorge_Luis_Borges");
+  const out = extractHtml(FIXTURE_WIKI, "https://es.wikipedia.org/wiki/El_escritor_argentino");
 
   // Boilerplate that used to leak into the extracted text is gone.
   assert.doesNotMatch(out.contentText, /Información personal/);
   assert.doesNotMatch(out.contentText, /Nombre de nacimiento/);
-  assert.doesNotMatch(out.contentText, /Retrato de Borges/);
+  assert.doesNotMatch(out.contentText, /Retrato del escritor/);
   assert.doesNotMatch(out.contentText, /Enlaces relacionados de la barra lateral/);
   assert.doesNotMatch(out.contentText, /Contenido\s*\n?\s*1 Biografía/); // ToC
   assert.doesNotMatch(out.contentText, /\[editar\]/);
   assert.doesNotMatch(out.contentText, /\[1\]|\[2\]|\[3\]/); // reference markers
-  assert.doesNotMatch(out.contentText, /Plantilla Jorge Luis Borges/); // navbox title
+  assert.doesNotMatch(out.contentText, /Plantilla El escritor argentino/); // navbox title
   assert.doesNotMatch(out.contentText, /El libro de arena/); // navbox-only link
 
   // The real in-article table (not the infobox) survives, with cells separated by spaces.
@@ -49,7 +49,7 @@ test("extractHtml on a Wikipedia-like page: infobox/navbox/references/toc stripp
 
   // The excerpt is the lead paragraph, not an infobox row.
   const excerpt = excerptOf(out.contentText);
-  assert.match(excerpt, /^Jorge Luis Borges \(Buenos Aires, 24 de agosto de 1899-Ginebra/);
+  assert.match(excerpt, /^El escritor argentino \(Buenos Aires, 24 de agosto de 1899-Ginebra/);
   assert.match(excerpt, /escritor, poeta, ensayista y traductor argentino/);
   assert.doesNotMatch(excerpt, /Información personal/);
   assert.doesNotMatch(excerpt, /Nombre de nacimiento/);

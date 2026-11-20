@@ -60,7 +60,7 @@ test("video format selector prefers H.264 + AAC and honours the height cap", () 
 });
 
 test("yt-dlp arguments per format and quality", () => {
-  const base = { url: "https://youtu.be/abc", dir: "C:\\Users\\Luis Salet\\Downloads\\Links Hoard" };
+  const base = { url: "https://youtu.be/abc", dir: "C:\\Users\\Test Reader\\Downloads\\Links Hoard" };
   const video = buildYtdlpArgs({ ...base, format: "video", quality: "720", hasFfmpeg: true, ffmpegPath: "C:\\ffmpeg\\ffmpeg.exe" });
   assert.deepEqual(video.slice(-2), ["--", "https://youtu.be/abc"]);
   assert.ok(video.includes("--no-playlist") && !video.includes("--yes-playlist"));
@@ -207,8 +207,8 @@ test("codec probe decides when an MP4 must be re-encoded", () => {
 });
 
 test("show-in-folder commands per OS", () => {
-  assert.deepEqual(revealCommand("C:\\Users\\Luis Salet\\Downloads\\Links Hoard\\a [x].mp4", "win32"),
-    { cmd: "explorer.exe", args: ['/select,"C:\\Users\\Luis Salet\\Downloads\\Links Hoard\\a [x].mp4"'], verbatim: true });
+  assert.deepEqual(revealCommand("C:\\Users\\Test Reader\\Downloads\\Links Hoard\\a [x].mp4", "win32"),
+    { cmd: "explorer.exe", args: ['/select,"C:\\Users\\Test Reader\\Downloads\\Links Hoard\\a [x].mp4"'], verbatim: true });
   assert.deepEqual(revealCommand("/Users/l/a.mp4", "darwin"), { cmd: "open", args: ["-R", "/Users/l/a.mp4"], verbatim: false });
   assert.deepEqual(revealCommand("/home/l/dl/a.mp4", "linux"), { cmd: "xdg-open", args: ["/home/l/dl"], verbatim: false });
 });

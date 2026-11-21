@@ -1,6 +1,14 @@
 {
   "schema": 1,
   "x-family": {
+    "isolated_instance": {
+      "data_env": "LINKS_DATA_DIR",
+      "port_env": "LINKS_PORT",
+      "env": {
+        "LINKS_MEDIA_DIR": "{DATA_DIR}/downloads",
+        "LINKS_SESSIONS_DIR": "{DATA_DIR}/sessions"
+      }
+    },
     "copilot": {
       "version": 1,
       "info": "/api/copilot/info",

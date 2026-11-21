@@ -25,6 +25,10 @@ A text is cut by its headings when it has them: numbered headings (`2.1 Method`)
 
 A document that cannot be read is still saved by its file name, with the reason in its description. Documents up to 40 MB are read.
 
+After changing branches or updating a checkout, run `npm ci` from the project root before running `npm test`.
+If a PDF is saved under its filename with no text and the reason says `ERR_MODULE_NOT_FOUND` for `unpdf`,
+reinstall the locked dependencies with `npm ci` and refetch the PDF once the app is using that installation.
+
 ## The fold document
 
 `GET /api/links/:id/fold?lang=es` (`&download=1` to save it) returns the fold in an open JSON format:
@@ -87,3 +91,8 @@ The link is saved (or updated) with that content and is not fetched again from t
 ## En español
 
 Plegar lee cualquier texto guardado (web, PDF, DOCX, EPUB, artículo de arXiv) en cinco niveles: completo, frases clave literales, idea clave y por qué de cada sección, una línea por sección y mapa de temas. Los dos primeros salen del texto sin modelo; los otros tres los escribe una vez el modelo de las Sparks a través del Hub y quedan guardados por versión del texto e idioma. Se cambia de nivel con el deslizador o las teclas 1-5, + y −; cada elemento abre su párrafo en el texto completo o en la página original, y las notas siguen con su pasaje en todos los niveles. El plegado se descarga como JSON abierto (`links-fold`). La traducción bilingüe muestra cada párrafo con su traducción debajo y la guarda por idioma. La extensión de `extension/` (Brave, Chrome, Edge) manda la pestaña tal como la ves, con tu sesión, y la abre plegada. Los agentes leen nivel a nivel con `fold_link`, `fold_read` y `translate_link`.
+
+Tras cambiar de rama o actualizar el código, ejecuta `npm ci` desde la raíz del proyecto antes de `npm test`.
+Si un PDF queda guardado con el nombre del archivo, sin texto, y el motivo indica que falta `unpdf`
+(`ERR_MODULE_NOT_FOUND`), reinstala las dependencias fijadas con `npm ci` y vuelve a descargar el PDF
+cuando la aplicación esté usando esa instalación.

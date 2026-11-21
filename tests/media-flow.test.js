@@ -32,7 +32,13 @@ const until = async (fn, timeoutMs = 10_000, step = 20) => {
 };
 const TERMINAL = ["done", "failed", "cancelled"];
 const get = async (id) => (await s.call("GET", `/api/media/${id}`)).body;
-const waitTerminal = (id) => until(async () => { const r = await get(id); return TERMINAL.includes(r.status) ? r : null; });
+const waitTerminal = async (id) => {
+  // An update and retry can start several child processes before the download finishes.
+  await media.waitForDownload(id, 60_000);
+  const row = await get(id);
+  assert.ok(TERMINAL.includes(row?.status), `Download ${id} did not finish: ${row?.status ?? "missing"} (${row?.detail || row?.error || "no detail"})`);
+  return row;
+};
 const start = async (body) => {
   const r = await s.call("POST", "/api/media", { save_link: false, ...body });
   assert.ok([200, 202].includes(r.status), JSON.stringify(r.body));

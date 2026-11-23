@@ -8,3 +8,5 @@ data/
 .venv-sentidos/
 __pycache__/
 *.pyc
+OBJETIVOS.md
+PENDIENTES.md

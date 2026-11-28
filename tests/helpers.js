@@ -34,8 +34,11 @@ globalThis.fetch = (input, init) => {
 // ...and must never start the real Sentidos worker of this machine: point its environment at a folder that does not exist.
 process.env.LINKS_SENTIDOS_VENV = path.join(os.tmpdir(), "links-hoard-test-no-sentidos-venv");
 
-export function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-"));
+// Pass the test context for per-test data. Suite fixtures and bootServer own their teardown separately.
+export function tempDir(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "links-hoard-test-"));
+  t?.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 export async function bootServer(options = {}) {

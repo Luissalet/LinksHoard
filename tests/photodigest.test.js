@@ -139,9 +139,12 @@ before(async () => {
   fakes = installFakes(path.join(work, "fakes"));
 });
 after(async () => {
-  await new Promise((r) => imgServer.close(r));
-  setEnv(savedEnv);
-  fs.rmSync(work, { recursive: true, force: true });
+  try {
+    if (imgServer) await new Promise((r) => imgServer.close(r));
+  } finally {
+    setEnv(savedEnv);
+    if (work) fs.rmSync(work, { recursive: true, force: true });
+  }
 });
 afterEach(() => { digest.setOcrProvider(null); digest.setChatProvider(null); setEnv(savedEnv); });
 
@@ -291,18 +294,19 @@ test("when no picture can be had the digest fails saying so, instead of claiming
 // the app that owns the speech service is started through the Hub
 // ---------------------------------------------------------------------------
 
-async function hubWithTalos({ manuallyStopped = false } = {}) {
+async function hubWithTalos(t, { manuallyStopped = false } = {}) {
+  const dataDir = tempDir(t);
   const hub = await startFakeHub();
   hub.state.apps.talos = { state: "stopped", manually_stopped: manuallyStopped };
   // Funes is an identity absorbed by Talos: it cannot be launched, and its state is whatever Talos's is
   hub.state.apps.funes = { get state() { return hub.state.apps.talos.state === "running" ? "foreign" : "stopped"; }, launchable: false, family: { absorbed_by: { id: "talos" } } };
-  family.configure({ app: "links", dataDir: tempDir(), hub: hub.url });
+  family.configure({ app: "links", dataDir, hub: hub.url });
   forgetAvailability();
   return hub;
 }
 
-test("ensureService starts Talos (which holds Funes) through the Hub and waits for the speech service", async () => {
-  const hub = await hubWithTalos();
+test("ensureService starts Talos (which holds Funes) through the Hub and waits for the speech service", async (t) => {
+  const hub = await hubWithTalos(t);
   try {
     assert.deepEqual(await ownerOf("funes"), { id: "talos", absorbed: "talos", launchable: false, stopped_by_hand: false, error: "" });
     const up = await ensureService("stt", "funes", { waitS: 10, pollMs: 20 });
@@ -316,8 +320,8 @@ test("ensureService starts Talos (which holds Funes) through the Hub and waits f
   } finally { await hub.stop(); family.configure({ app: "links" }); forgetAvailability(); }
 });
 
-test("ensureService does not start an app that was stopped by hand, and says why", async () => {
-  const hub = await hubWithTalos({ manuallyStopped: true });
+test("ensureService does not start an app that was stopped by hand, and says why", async (t) => {
+  const hub = await hubWithTalos(t, { manuallyStopped: true });
   try {
     const up = await ensureService("stt", "funes", { waitS: 10, pollMs: 20 });
     assert.equal(up.ok, false);
@@ -326,8 +330,9 @@ test("ensureService does not start an app that was stopped by hand, and says why
   } finally { await hub.stop(); family.configure({ app: "links" }); forgetAvailability(); }
 });
 
-test("ensureService gives up at once when the Hub is not there, and explains a service that never answers", async () => {
-  family.configure({ app: "links", dataDir: tempDir(), hub: "http://127.0.0.1:1" });
+test("ensureService gives up at once when the Hub is not there, and explains a service that never answers", async (t) => {
+  t.after(() => { family.configure({ app: "links" }); forgetAvailability(); });
+  family.configure({ app: "links", dataDir: tempDir(t), hub: "http://127.0.0.1:1" });
   forgetAvailability();
   const t0 = Date.now();
   const down = await ensureService("stt", "funes", { waitS: 30, pollMs: 20 });
@@ -338,19 +343,19 @@ test("ensureService gives up at once when the Hub is not there, and explains a s
   const hub = await startFakeHub();
   hub.state.apps.talos = { state: "stopped" };
   hub.state.apps.funes = { state: "stopped", launchable: false, family: { absorbed_by: { id: "talos" } } }; // Talos starts but Funes never comes up
-  family.configure({ app: "links", dataDir: tempDir(), hub: hub.url });
+  family.configure({ app: "links", dataDir: tempDir(t), hub: hub.url });
   forgetAvailability();
   try {
     const slow = await ensureService("stt", "funes", { waitS: 0.1, pollMs: 20 });
     assert.equal(slow.ok, false);
     assert.match(slow.error, /se pidió arrancar talos al Hub y no respondió/);
-  } finally { await hub.stop(); family.configure({ app: "links" }); forgetAvailability(); }
+  } finally { await hub.stop(); }
 });
 
-test("a transcription finds Talos stopped, has the Hub start it, and then transcribes through Funes", { skip: SKIP, timeout: 120_000 }, async () => {
+test("a transcription finds Talos stopped, has the Hub start it, and then transcribes through Funes", { skip: SKIP, timeout: 120_000 }, async (t) => {
   setEnv({ LINKS_FFMPEG: undefined });
   const s = await bootServer();
-  const hub = await hubWithTalos();
+  const hub = await hubWithTalos(t);
   const clip = path.join(work, "voz.mp4");
   const made = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=5:d=3", "-f", "lavfi", "-i", "sine=frequency=330:duration=3",
     "-c:a", "aac", "-pix_fmt", "yuv420p", "-shortest", clip], { windowsHide: true });

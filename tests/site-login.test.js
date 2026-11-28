@@ -51,10 +51,14 @@ before(async () => {
 });
 
 after(async () => {
-  await sessions.shutdown();
-  sessions._reset();
-  await s?.stop();
-  setEnv(savedEnv);
+  try {
+    await sessions.shutdown();
+    sessions._reset();
+    await s?.stop();
+  } finally {
+    setEnv(savedEnv);
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("sites by URL, the login cookie and the Netscape file", () => {
